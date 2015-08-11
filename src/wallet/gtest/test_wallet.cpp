@@ -188,7 +188,7 @@ TEST(WalletTests, FindUnspentSproutNotes) {
     EXPECT_EQ(-1, chainActive.Height());
     CBlock block;
     block.vtx.push_back(wtx);
-    block.hashMerkleRoot = block.BuildMerkleTree();
+    block.hashMerkleRoot = block.ComputeMerkleRoot();
     auto blockHash = block.GetHash();
     CBlockIndex fakeIndex {block};
     mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -225,7 +225,7 @@ TEST(WalletTests, FindUnspentSproutNotes) {
     EXPECT_EQ(0, chainActive.Height());
     CBlock block2;
     block2.vtx.push_back(wtx2);
-    block2.hashMerkleRoot = block2.BuildMerkleTree();
+    block2.hashMerkleRoot = block2.ComputeMerkleRoot();
     block2.hashPrevBlock = blockHash;
     auto blockHash2 = block2.GetHash();
     CBlockIndex fakeIndex2 {block2};
@@ -284,7 +284,7 @@ TEST(WalletTests, FindUnspentSproutNotes) {
     EXPECT_EQ(1, chainActive.Height());
     CBlock block3;
     block3.vtx.push_back(wtx3);
-    block3.hashMerkleRoot = block3.BuildMerkleTree();
+    block3.hashMerkleRoot = block3.ComputeMerkleRoot();
     block3.hashPrevBlock = blockHash2;
     auto blockHash3 = block3.GetHash();
     CBlockIndex fakeIndex3 {block3};
@@ -663,7 +663,7 @@ TEST(WalletTests, GetConflictedSaplingNotes) {
         SproutMerkleTree sproutTree;
         CBlock block;
         block.vtx.push_back(wtx);
-        block.hashMerkleRoot = block.BuildMerkleTree();
+        block.hashMerkleRoot = block.ComputeMerkleRoot();
         auto blockHash = block.GetHash();
         CBlockIndex fakeIndex {block};
         mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -771,7 +771,7 @@ TEST(WalletTests, SproutNullifierIsSpent) {
     EXPECT_EQ(-1, chainActive.Height());
     CBlock block;
     block.vtx.push_back(wtx2);
-    block.hashMerkleRoot = block.BuildMerkleTree();
+    block.hashMerkleRoot = block.ComputeMerkleRoot();
     auto blockHash = block.GetHash();
     CBlockIndex fakeIndex {block};
     mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -824,7 +824,7 @@ TEST(WalletTests, SaplingNullifierIsSpent) {
     EXPECT_EQ(-1, chainActive.Height());
     CBlock block;
     block.vtx.push_back(wtx);
-    block.hashMerkleRoot = block.BuildMerkleTree();
+    block.hashMerkleRoot = block.ComputeMerkleRoot();
     auto blockHash = block.GetHash();
     CBlockIndex fakeIndex {block};
     mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -910,7 +910,7 @@ TEST(WalletTests, NavigateFromSaplingNullifierToNote) {
     SproutMerkleTree sproutTree;
     CBlock block;
     block.vtx.push_back(wtx);
-    block.hashMerkleRoot = block.BuildMerkleTree();
+    block.hashMerkleRoot = block.ComputeMerkleRoot();
     auto blockHash = block.GetHash();
     CBlockIndex fakeIndex {block};
     mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -1039,7 +1039,7 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
         SproutMerkleTree sproutTree;
         CBlock block;
         block.vtx.push_back(wtx);
-        block.hashMerkleRoot = block.BuildMerkleTree();
+        block.hashMerkleRoot = block.ComputeMerkleRoot();
         auto blockHash = block.GetHash();
         CBlockIndex fakeIndex {block};
         mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -1114,7 +1114,7 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
         EXPECT_EQ(0, chainActive.Height());
         CBlock block2;
         block2.vtx.push_back(wtx2);
-        block2.hashMerkleRoot = block2.BuildMerkleTree();
+        block2.hashMerkleRoot = block2.ComputeMerkleRoot();
         block2.hashPrevBlock = blockHash;
         auto blockHash2 = block2.GetHash();
         CBlockIndex fakeIndex2 {block2};
@@ -1836,7 +1836,7 @@ TEST(WalletTests, UpdatedSaplingNoteData) {
     SproutMerkleTree sproutTree;
     CBlock block;
     block.vtx.push_back(wtx);
-    block.hashMerkleRoot = block.BuildMerkleTree();
+    block.hashMerkleRoot = block.ComputeMerkleRoot();
     auto blockHash = block.GetHash();
     CBlockIndex fakeIndex {block};
     mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
@@ -1983,7 +1983,7 @@ TEST(WalletTests, MarkAffectedSaplingTransactionsDirty) {
     SproutMerkleTree sproutTree;
     CBlock block;
     block.vtx.push_back(wtx);
-    block.hashMerkleRoot = block.BuildMerkleTree();
+    block.hashMerkleRoot = block.ComputeMerkleRoot();
     auto blockHash = block.GetHash();
     CBlockIndex fakeIndex {block};
     mapBlockIndex.insert(std::make_pair(blockHash, &fakeIndex));
