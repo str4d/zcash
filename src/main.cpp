@@ -6996,7 +6996,7 @@ bool SendMessages(const Consensus::Params& params, CNode* pto, bool fSendTrickle
             vInvWait.reserve(pto->vInventoryToSend.size());
             for (const CInv& inv : pto->vInventoryToSend)
             {
-                if (pto->setInventoryKnown.contains(inv.hash))
+                if (pto->filterInventoryKnown.contains(inv.hash))
                     continue;
 
                 // trickle out tx inv to protect privacy
@@ -7017,9 +7017,9 @@ bool SendMessages(const Consensus::Params& params, CNode* pto, bool fSendTrickle
                     }
                 }
 
-                if (!pto->setInventoryKnown.contains(inv.hash))
+                if (!pto->filterInventoryKnown.contains(inv.hash))
                 {
-                    pto->setInventoryKnown.insert(inv.hash);
+                    pto->filterInventoryKnown.insert(inv.hash);
                     vInv.push_back(inv);
                     if (vInv.size() >= 1000)
                     {
