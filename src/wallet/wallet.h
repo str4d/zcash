@@ -61,6 +61,9 @@ static const unsigned int MAX_FREE_TRANSACTION_CREATE_SIZE = 1000;
 //  unless there is some exceptional network disruption.
 static const unsigned int WITNESS_CACHE_SIZE = MAX_REORG_LENGTH + 1;
 
+//! if set, all keys will be derived by using BIP32
+static const bool DEFAULT_USE_HD_WALLET = true;
+
 class CBlockIndex;
 class CCoinControl;
 class COutput;
@@ -791,6 +794,9 @@ protected:
     bool UpdatedNoteData(const CWalletTx& wtxIn, CWalletTx& wtx);
     void MarkAffectedTransactionsDirty(const CTransaction& tx);
 
+    /* the hd chain data model (external chain counters) */
+    CHDChain hdChain;
+
 public:
     /*
      * Main wallet lock.
@@ -1173,6 +1179,12 @@ public:
     bool GetBroadcastTransactions() const { return fBroadcastTransactions; }
     /** Set whether this wallet broadcasts transactions. */
     void SetBroadcastTransactions(bool broadcast) { fBroadcastTransactions = broadcast; }
+
+    /* Set the hd chain model (chain child index counters) */
+    bool SetHDChain(const CHDChain& chain, bool memonly);
+
+    /* Set the current hd master key (will reset the chain child index counters) */
+    bool SetHDMasterKey(const CKey& key);
     
     /* Find notes filtered by payment address, min depth, ability to spend */
     void GetFilteredNotes(std::vector<CSproutNotePlaintextEntry> & outEntries,
