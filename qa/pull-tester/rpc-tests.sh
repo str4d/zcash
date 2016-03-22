@@ -45,6 +45,7 @@ testScripts=(
     'nodehandling.py'
     'reindex.py'
     'addressindex.py'
+    'timestampindex.py'
     'decodescript.py'
     'blockchain.py'
     'disablewallet.py'
