@@ -2177,6 +2177,14 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
     view.PopAnchor(blockUndo.old_tree_root);
 
 
+    // move best block pointer to prevout block
+    view.SetBestBlock(pindex->pprev->GetBlockHash());
+
+    if (pfClean) {
+        *pfClean = fClean;
+        return true;
+    }
+
     if (fAddressIndex) {
         if (!pblocktree->EraseAddressIndex(addressIndex)) {
             return AbortNode(state, "Failed to delete address index");
@@ -2184,14 +2192,6 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
         if (!pblocktree->UpdateAddressUnspentIndex(addressUnspentIndex)) {
             return AbortNode(state, "Failed to write address unspent index");
         }
-    }
-
-    // move best block pointer to prevout block
-    view.SetBestBlock(pindex->pprev->GetBlockHash());
-
-    if (pfClean) {
-        *pfClean = fClean;
-        return true;
     }
 
     return fClean;
