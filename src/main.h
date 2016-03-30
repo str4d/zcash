@@ -375,6 +375,7 @@ struct CAddressUnspentKey {
 struct CAddressUnspentValue {
     CAmount satoshis;
     CScript script;
+    int blockHeight;
 
     ADD_SERIALIZE_METHODS;
 
@@ -382,11 +383,13 @@ struct CAddressUnspentValue {
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         READWRITE(satoshis);
         READWRITE(script);
+        READWRITE(blockHeight);
     }
 
-    CAddressUnspentValue(CAmount sats, CScript scriptPubKey) {
+    CAddressUnspentValue(CAmount sats, CScript scriptPubKey, int height) {
         satoshis = sats;
         script = scriptPubKey;
+        blockHeight = height;
     }
 
     CAddressUnspentValue() {
@@ -396,6 +399,7 @@ struct CAddressUnspentValue {
     void SetNull() {
         satoshis = -1;
         script.clear();
+        blockHeight = 0;
     }
 
     bool IsNull() const {
