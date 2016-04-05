@@ -65,6 +65,7 @@ bool fReindex = false;
 bool fTxIndex = false;
 bool fAddressIndex = false;
 bool fTimestampIndex = false;
+bool fSpentIndex = false;
 bool fHavePruned = false;
 bool fPruneMode = false;
 bool fIsBareMultisigStd = true;
@@ -1409,6 +1410,17 @@ bool GetTimestampIndex(const unsigned int &high, const unsigned int &low, std::v
     return true;
 }
 
+bool GetSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value)
+{
+    if (!fSpentIndex)
+        return error("spent index not enabled");
+
+    if (!pblocktree->ReadSpentIndex(key, value))
+        return error("unable to get spent info");
+
+    return true;
+}
+
 bool GetAddressIndex(uint160 addressHash, int type,
                      std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex, int start, int end)
 {
@@ -2065,6 +2077,7 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
 
     std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > addressUnspentIndex;
+    std::vector<std::pair<CSpentIndexKey, CSpentIndexValue> > spentIndex;
 
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
@@ -2139,8 +2152,14 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
                 if (!ApplyTxInUndo(undo, view, out))
                     fClean = false;
 
+                const CTxIn input = tx.vin[j];
+
+                if (fSpentIndex) {
+                    // undo and delete the spent index
+                    spentIndex.push_back(make_pair(CSpentIndexKey(input.prevout.hash, input.prevout.n), CSpentIndexValue()));
+                }
+
                 if (fAddressIndex) {
-                    const CTxIn input = tx.vin[j];
                     const CTxOut &prevout = view.GetOutputFor(tx.vin[j]);
                     if (prevout.scriptPubKey.IsPayToScriptHash()) {
                         vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22);
@@ -2165,6 +2184,7 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
                         continue;
                     }
                 }
+
             }
         }
     }
@@ -2359,6 +2379,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
     std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > addressUnspentIndex;
+    std::vector<std::pair<CSpentIndexKey, CSpentIndexValue> > spentIndex;
 
     // Construct the incremental merkle tree at the current
     // block position,
@@ -2405,31 +2426,43 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("ConnectBlock(): JoinSplit requirements not met"),
                                  REJECT_INVALID, "bad-txns-joinsplit-requirements-not-met");
 
-            if (fAddressIndex)
+            if (fAddressIndex || fSpentIndex)
             {
                 for (size_t j = 0; j < tx.vin.size(); j++) {
+
                     const CTxIn input = tx.vin[j];
-                    const CTxOut &prevout = view.GetOutputFor(tx.vin[j]);
-                    if (prevout.scriptPubKey.IsPayToScriptHash()) {
-                        vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22);
 
-                        // record spending activity
-                        addressIndex.push_back(make_pair(CAddressIndexKey(2, uint160(hashBytes), pindex->nHeight, i, txhash, j, true), prevout.nValue * -1));
-
-                        // remove address from unspent index
-                        addressUnspentIndex.push_back(make_pair(CAddressUnspentKey(2, uint160(hashBytes), input.prevout.hash, input.prevout.n), CAddressUnspentValue()));
-                    } else if (prevout.scriptPubKey.IsPayToPublicKeyHash()) {
-                        vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+3, prevout.scriptPubKey.begin()+23);
-
-                        // record spending activity
-                        addressIndex.push_back(make_pair(CAddressIndexKey(1, uint160(hashBytes), pindex->nHeight, i, txhash, j, true), prevout.nValue * -1));
-
-                        // remove address from unspent index
-                        addressUnspentIndex.push_back(make_pair(CAddressUnspentKey(1, uint160(hashBytes), input.prevout.hash, input.prevout.n), CAddressUnspentValue()));
-
-                    } else {
-                        continue;
+                    if (fSpentIndex) {
+                        // add the spent index to determine the txid and input that spent an output
+                        spentIndex.push_back(make_pair(CSpentIndexKey(input.prevout.hash, input.prevout.n), CSpentIndexValue(txhash, j, pindex->nHeight)));
                     }
+
+                    if (fAddressIndex) {
+
+                        const CTxOut &prevout = view.GetOutputFor(tx.vin[j]);
+
+                        if (prevout.scriptPubKey.IsPayToScriptHash()) {
+                            vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22);
+
+                            // record spending activity
+                            addressIndex.push_back(make_pair(CAddressIndexKey(2, uint160(hashBytes), pindex->nHeight, i, txhash, j, true), prevout.nValue * -1));
+
+                            // remove address from unspent index
+                            addressUnspentIndex.push_back(make_pair(CAddressUnspentKey(2, uint160(hashBytes), input.prevout.hash, input.prevout.n), CAddressUnspentValue()));
+                        } else if (prevout.scriptPubKey.IsPayToPublicKeyHash()) {
+                            vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+3, prevout.scriptPubKey.begin()+23);
+
+                            // record spending activity
+                            addressIndex.push_back(make_pair(CAddressIndexKey(1, uint160(hashBytes), pindex->nHeight, i, txhash, j, true), prevout.nValue * -1));
+
+                            // remove address from unspent index
+                            addressUnspentIndex.push_back(make_pair(CAddressUnspentKey(1, uint160(hashBytes), input.prevout.hash, input.prevout.n), CAddressUnspentValue()));
+
+                        } else {
+                            continue;
+                        }
+                    }
+
                 }
             }
 
@@ -2568,6 +2601,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return AbortNode(state, "Failed to write address unspent index");
         }
     }
+
+    if (fSpentIndex)
+        if (!pblocktree->UpdateSpentIndex(spentIndex))
+            return AbortNode(state, "Failed to write transaction index");
 
     if (fTimestampIndex)
         if (!pblocktree->WriteTimestampIndex(CTimestampIndexKey(pindex->nTime, pindex->GetBlockHash())))
@@ -4034,6 +4071,10 @@ bool static LoadBlockIndexDB()
     pblocktree->ReadFlag("timestampindex", fTimestampIndex);
     LogPrintf("%s: timestamp index %s\n", __func__, fTimestampIndex ? "enabled" : "disabled");
 
+    // Check whether we have a spent index
+    pblocktree->ReadFlag("spentindex", fSpentIndex);
+    LogPrintf("%s: spent index %s\n", __func__, fSpentIndex ? "enabled" : "disabled");
+
     // Fill in-memory data
     BOOST_FOREACH(const PAIRTYPE(uint256, CBlockIndex*)& item, mapBlockIndex)
     {
@@ -4349,6 +4390,9 @@ bool InitBlockIndex() {
     // Use the provided setting for -timestampindex in the new database
     fTimestampIndex = GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX);
     pblocktree->WriteFlag("timestampindex", fTimestampIndex);
+
+    fSpentIndex = GetBoolArg("-spentindex", DEFAULT_SPENTINDEX);
+    pblocktree->WriteFlag("spentindex", fSpentIndex);
 
     LogPrintf("Initializing databases...\n");
 
