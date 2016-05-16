@@ -113,6 +113,7 @@ LIBZCASH_H = \
 # bitcoin core #
 BITCOIN_CORE_H = \
   addressindex.h \
+  spentindex.h \
   addrman.h \
   alert.h \
   amount.h \
