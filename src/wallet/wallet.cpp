@@ -1729,6 +1729,11 @@ bool CWallet::SetHDChain(const CHDChain& chain, bool memonly)
     return true;
 }
 
+bool CWallet::IsHDChainEnabled()
+{
+    return !hdChain.masterKeyID.IsNull();
+}
+
 void CWalletTx::SetSproutNoteData(mapSproutNoteData_t &noteData)
 {
     mapSproutNoteData.clear();

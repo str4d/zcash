@@ -1185,6 +1185,9 @@ public:
 
     /* Set the current hd master key (will reset the chain child index counters) */
     bool SetHDMasterKey(const CKey& key);
+
+    /* Inquire whether this wallet uses an HD chain. */
+    bool IsHDChainEnabled();
     
     /* Find notes filtered by payment address, min depth, ability to spend */
     void GetFilteredNotes(std::vector<CSproutNotePlaintextEntry> & outEntries,
