@@ -202,10 +202,6 @@ struct Params {
 
     int FundingPeriodIndex(int fundingStreamStartHeight, int nHeight) const;
 
-    /** Used to check majorities for block version upgrade */
-    int nMajorityEnforceBlockUpgrade;
-    int nMajorityRejectBlockOutdated;
-    int nMajorityWindow;
     NetworkUpgrade vUpgrades[MAX_NETWORK_UPGRADES];
 
     int nFundingPeriodLength;
