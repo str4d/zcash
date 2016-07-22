@@ -5333,8 +5333,6 @@ bool InitBlockIndex(const CChainParams& chainparams)
             CBlockIndex *pindex = AddToBlockIndex(block, chainparams.GetConsensus());
             if (!ReceivedBlockTransactions(block, state, chainparams, pindex, blockPos))
                 return error("LoadBlockIndex(): genesis block not accepted");
-            if (!ActivateBestChain(state, chainparams, &block))
-                return error("LoadBlockIndex(): genesis block cannot be activated");
             // Force a chainstate write so that when we VerifyDB in a moment, it doesn't check stale data
             return FlushStateToDisk(chainparams, state, FLUSH_STATE_ALWAYS);
         } catch (const std::runtime_error& e) {
