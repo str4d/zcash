@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "ZcashStratum.h"
+#include "trompequihash/equi_miner.h"
 
 #include "chainparams.h"
 #include "clientversion.h"
@@ -11,6 +12,10 @@
 #include "version.h"
 
 #include <atomic>
+
+#ifndef USE_TROMP_EQUIHASH
+#define USE_TROMP_EQUIHASH
+#endif
 
 
 void static ZcashMinerThread(ZcashMiner* miner, int size, int pos)
@@ -72,11 +77,6 @@ void static ZcashMinerThread(ZcashMiner* miner, int size, int pos)
                 nonce = baseNonce + ((space/size)*pos << offset);
                 nonceEnd = baseNonce + ((space/size)*(pos+1) << offset);
             }
-
-            // Hash state
-            crypto_generichash_blake2b_state state;
-            EhInitialiseState(n, k, state);
-
             // I = the block header minus nonce and solution.
             CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
             {
@@ -85,24 +85,22 @@ void static ZcashMinerThread(ZcashMiner* miner, int size, int pos)
                 ss << I;
             }
 
+            // Header generation
+#ifdef  USE_TROMP_EQUIHASH
+          	const char *tequihash_header = (char *)&ss[0];
+          	unsigned int tequihash_header_len = ss.size();
+#else
+            // Hash state
+            crypto_generichash_blake2b_state state;
+            EhInitialiseState(n, k, state);
+
             // H(I||...
             crypto_generichash_blake2b_update(&state, (unsigned char*)&ss[0], ss.size());
-
+#endif
             // Start working
             while (true) {
-                // H(I||V||...
-                crypto_generichash_blake2b_state curr_state;
-                curr_state = state;
-                auto bNonce = ArithToUint256(nonce);
-                crypto_generichash_blake2b_update(&curr_state,
-                                                  bNonce.begin(),
-                                                  bNonce.size());
-
-                // (x_1, x_2, ...) = A(I, V, n, k)
-                LogPrint("pow", "Running Equihash solver with nNonce = %s\n",
-                         nonce.ToString());
-
-                std::function<bool(std::vector<unsigned char>)> validBlock =
+                uint256 bNonce = ArithToUint256(nonce);
+            	std::function<bool(std::vector<unsigned char>)> validBlock =
                         [&m_zmt, &header, &bNonce, &target, &miner]
                         (std::vector<unsigned char> soln) {
                     std::lock_guard<std::mutex> lock{*m_zmt.get()};
@@ -129,6 +127,62 @@ void static ZcashMinerThread(ZcashMiner* miner, int size, int pos)
                     boost::this_thread::interruption_point();
                     return cancelSolver.load();
                 };
+
+#ifdef USE_TROMP_EQUIHASH
+            	//////////////////////////////////////////////////////////////////////////
+            	// TROMP EQ SOLVER START
+              	// I = the block header minus nonce and solution.
+                // Nonce
+              	// Create solver and initialize it with header and nonce.
+              	equi eq(1);
+              	eq.setnonce(tequihash_header, tequihash_header_len, (const char*)bNonce.begin(), bNonce.size());
+
+                LogPrintf("Running TrompEquihash solver with nNonceInBlock=%s\n",
+                  		 nonce.ToString());
+
+                // Intialization done, start algo driver.
+                eq.digit0(0);
+                eq.xfull = eq.bfull = eq.hfull = 0;
+                eq.showbsizes(0);
+                for (u32 r = 1; r < WK; r++) {
+                	r&1 ? eq.digitodd(r, 0) : eq.digiteven(r, 0);
+                	eq.xfull = eq.bfull = eq.hfull = 0;
+                	eq.showbsizes(r);
+                }
+                eq.digitK(0);
+
+                // Convert solution indices to charactar array(decompress) and pass it to validBlock method.
+                u32 nsols = 0;
+                for (unsigned s = 0; s < eq.nsols; s++) {
+                	nsols++;
+                    LogPrintf("Checking solution %d \n", nsols);
+                    std::vector<eh_index> index_vector(PROOFSIZE);
+                    for (u32 i = 0; i < PROOFSIZE; i++) {
+                    	index_vector[i] = eq.sols[s][i];
+                    }
+                    std::vector<unsigned char> sol_char = GetMinimalFromIndices(index_vector, DIGITBITS);
+
+                    if (validBlock(sol_char)) {
+                    	// If we find a POW solution, do not try other solutions
+                      	// because they become invalid as we created a new block in blockchain.
+                      	  break;
+                    }
+                }
+                //////////////////////////////////////////////////////////////////////
+                // TROMP EQ SOLVER END
+                //////////////////////////////////////////////////////////////////////
+#else
+                // H(I||V||...
+                crypto_generichash_blake2b_state curr_state;
+                curr_state = state;
+                crypto_generichash_blake2b_update(&curr_state,
+                                                  bNonce.begin(),
+                                                  bNonce.size());
+
+                // (x_1, x_2, ...) = A(I, V, n, k)
+                LogPrint("pow", "Running Equihash solver with nNonce = %s\n",
+                         nonce.ToString());
+
                 try {
                     // If we find a valid block, we get more work
                     if (EhOptimisedSolve(n, k, curr_state, validBlock, cancelled)) {
@@ -139,7 +193,7 @@ void static ZcashMinerThread(ZcashMiner* miner, int size, int pos)
                     cancelSolver.store(false);
                     break;
                 }
-
+#endif
                 // Check for stop
                 boost::this_thread::interruption_point();
                 if (nonce == nonceEnd) {
