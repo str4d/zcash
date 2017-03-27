@@ -3,6 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
+#include "rpc/blockchain.h"
+
 #include "amount.h"
 #include "chain.h"
 #include "chainparams.h"

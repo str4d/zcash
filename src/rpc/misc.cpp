@@ -10,6 +10,7 @@
 #include "main.h"
 #include "net.h"
 #include "netbase.h"
+#include "rpc/blockchain.h"
 #include "rpc/server.h"
 #include "txmempool.h"
 #include "util.h"
