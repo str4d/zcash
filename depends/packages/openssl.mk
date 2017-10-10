@@ -33,7 +33,8 @@ $(package)_config_opts+=no-dynamic-engine
 $(package)_config_opts+=no-ec2m
 $(package)_config_opts+=no-ec_nistp_64_gcc_128
 $(package)_config_opts+=no-egd
-$(package)_config_opts+=no-engine
+# Required for tor
+#$(package)_config_opts+=no-engine
 $(package)_config_opts+=no-err
 $(package)_config_opts+=no-gost
 $(package)_config_opts+=no-heartbeats
@@ -57,15 +58,18 @@ $(package)_config_opts+=no-rmd160
 $(package)_config_opts+=no-scrypt
 $(package)_config_opts+=no-sctp
 $(package)_config_opts+=no-seed
-$(package)_config_opts+=no-shared
-$(package)_config_opts+=no-sock
+# Required for tor (strangely)
+#$(package)_config_opts+=no-shared
+# Required for tor
+#$(package)_config_opts+=no-sock
 $(package)_config_opts+=no-srp
 $(package)_config_opts+=no-srtp
 $(package)_config_opts+=no-ssl
 $(package)_config_opts+=no-ssl3
 $(package)_config_opts+=no-ssl3-method
 $(package)_config_opts+=no-ssl-trace
-$(package)_config_opts+=no-stdio
+# Required for tor
+#$(package)_config_opts+=no-stdio
 $(package)_config_opts+=no-tls
 $(package)_config_opts+=no-tls1
 $(package)_config_opts+=no-tls1-method
