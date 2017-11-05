@@ -31,15 +31,6 @@ struct ShieldCoinbaseUTXO {
     CAmount amount;
 };
 
-// Package of info which is passed to perform_joinsplit methods.
-struct ShieldCoinbaseJSInfo
-{
-    std::vector<JSInput> vjsin;
-    std::vector<JSOutput> vjsout;
-    CAmount vpub_old = 0;
-    CAmount vpub_new = 0;
-};
-
 class AsyncRPCOperation_shieldcoinbase : public AsyncRPCOperation {
 public:
     AsyncRPCOperation_shieldcoinbase(CMutableTransaction contextualTx, std::vector<ShieldCoinbaseUTXO> inputs, std::string toAddress, CAmount fee = SHIELD_COINBASE_DEFAULT_MINERS_FEE, UniValue contextInfo = NullUniValue);
@@ -67,26 +58,15 @@ private:
     CAmount fee_;
     PaymentAddress tozaddr_;
 
-    uint256 joinSplitPubKey_;
-    unsigned char joinSplitPrivKey_[crypto_sign_SECRETKEYBYTES];
-
     std::vector<ShieldCoinbaseUTXO> inputs_;
 
     CTransaction tx_;
 
     bool main_impl();
 
-    // JoinSplit without any input notes to spend
-    UniValue perform_joinsplit(ShieldCoinbaseJSInfo &);
-
-    void sign_send_raw_transaction(UniValue obj);     // throws exception if there was an error
-
     void lock_utxos();
 
     void unlock_utxos();
-
-    // payment disclosure!
-    std::vector<PaymentDisclosureKeyInfo> paymentDisclosureData_;
 };
 
 
@@ -113,10 +93,6 @@ public:
 
     UniValue perform_joinsplit(ShieldCoinbaseJSInfo &info) {
         return delegate->perform_joinsplit(info);
-    }
-
-    void sign_send_raw_transaction(UniValue obj) {
-        delegate->sign_send_raw_transaction(obj);
     }
 
     void set_state(OperationStatus state) {
