@@ -599,7 +599,7 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
         {
             checktxtime = std::chrono::steady_clock::now() + std::chrono::seconds(10);
 
-            WaitableLock lock(csBestBlock);
+            WAIT_LOCK(csBestBlock, lock);
             while (chainActive.Tip()->GetBlockHash() == hashWatchedChain && IsRPCRunning())
             {
                 // Release the main lock while waiting
