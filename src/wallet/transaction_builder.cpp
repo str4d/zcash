@@ -47,6 +47,26 @@ void TransactionBuilder::PrepareForShielded()
     tx_ = CTransaction(mtx);
 }
 
+void TransactionBuilder::AddTransparentInput(COutPoint prevout, CAmount value, bool coinbase, uint32_t nSequence)
+{
+    CMutableTransaction rawTx(tx_);
+    CTxIn in(prevout);
+    in.nSequence = nSequence;
+    rawTx.vin.push_back(in);
+    tx_ = CTransaction(rawTx);
+}
+
+void TransactionBuilder::AddShieldedOutput()
+{
+}
+
+void TransactionBuilder::GetProofs()
+{
+    for (auto zinput : zinputs) {
+        perform_joinsplit(zinput.info, zinput.outPoints);
+    }
+}
+
 UniValue TransactionBuilder::perform_joinsplit(JoinSplitInfo& info)
 {
     std::vector<boost::optional<ZCIncrementalWitness>> witnesses;
@@ -231,7 +251,7 @@ UniValue TransactionBuilder::perform_joinsplit(
  * Sign and send a raw transaction.
  * Raw transaction as hex string should be in object field "rawtxn"
  */
-UniValue TransactionBuilder::sign_send_raw_transaction(UniValue obj)
+UniValue TransactionBuilder::SignTransparent(UniValue obj)
 {
     // Sign the raw transaction
     UniValue rawtxnValue = find_value(obj, "rawtxn");
@@ -257,10 +277,19 @@ UniValue TransactionBuilder::sign_send_raw_transaction(UniValue obj)
     }
     std::string signedtxn = hexValue.get_str();
 
+    // Keep the signed transaction so we can hash to the same txid
+    CDataStream stream(ParseHex(signedtxn), SER_NETWORK, PROTOCOL_VERSION);
+    CTransaction tx;
+    stream >> tx;
+    tx_ = tx;
+}
+
+UniValue TransactionBuilder::Send()
+{
     // Send the signed transaction
     UniValue o(UniValue::VOBJ);
     if (!testmode) {
-        params.clear();
+        UniValue params = UniValue(UniValue::VARR);
         params.setArray();
         params.push_back(signedtxn);
         UniValue sendResultValue = sendrawtransaction(params, false);
@@ -282,12 +311,6 @@ UniValue TransactionBuilder::sign_send_raw_transaction(UniValue obj)
         o.push_back(Pair("txid", tx.GetHash().ToString()));
         o.push_back(Pair("hex", signedtxn));
     }
-
-    // Keep the signed transaction so we can hash to the same txid
-    CDataStream stream(ParseHex(signedtxn), SER_NETWORK, PROTOCOL_VERSION);
-    CTransaction tx;
-    stream >> tx;
-    tx_ = tx;
 
     return o;
 }

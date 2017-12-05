@@ -75,13 +75,6 @@ private:
 
     // The key is the result string from calling JSOutPoint::ToString()
     std::unordered_map<std::string, WitnessAnchorData> jsopWitnessAnchorMap;
-
-    std::vector<SendManyRecipient> t_outputs_;
-    std::vector<SendManyRecipient> z_outputs_;
-    std::vector<SendManyInputUTXO> t_inputs_;
-    std::vector<SendManyInputJSOP> z_inputs_;
-    
-    CTransaction tx_;
    
     void add_taddr_change_output_to_tx(CAmount amount);
     void add_taddr_outputs_to_tx();

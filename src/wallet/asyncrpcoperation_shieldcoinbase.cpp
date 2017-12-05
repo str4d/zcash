@@ -185,12 +185,9 @@ bool AsyncRPCOperation_shieldcoinbase::main_impl() {
             getId(), FormatMoney(targetAmount), FormatMoney(sendAmount), FormatMoney(minersFee));
 
     // update the transaction with these inputs
-    CMutableTransaction rawTx(tx_);
     for (ShieldCoinbaseUTXO & t : inputs_) {
-        CTxIn in(COutPoint(t.txid, t.vout));
-        rawTx.vin.push_back(in);
+        AddTransparentInput(COutPoint(t.txid, t.vout), t.amount, true);
     }
-    tx_ = CTransaction(rawTx);
 
     PrepareForShielded();
 
@@ -202,8 +199,11 @@ bool AsyncRPCOperation_shieldcoinbase::main_impl() {
     JSOutput jso = JSOutput(tozaddr_, sendAmount);
     info.vjsout.push_back(jso);
     obj = perform_joinsplit(info);
+    AddShieldedOutput();
+    GetProofs();
 
-    set_result(sign_send_raw_transaction(obj));
+    SignTransparent();
+    set_result(Send());
     return true;
 }
 
