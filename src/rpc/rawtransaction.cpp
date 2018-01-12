@@ -250,9 +250,8 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
 
     if (!hashBlock.IsNull()) {
         entry.pushKV("blockhash", hashBlock.GetHex());
-        BlockMap::iterator mi = mapBlockIndex.find(hashBlock);
-        if (mi != mapBlockIndex.end() && (*mi).second) {
-            CBlockIndex* pindex = (*mi).second;
+        CBlockIndex* pindex = LookupBlockIndex(hashBlock);
+        if (pindex) {
             if (chainActive.Contains(pindex)) {
                 entry.pushKV("height", pindex->nHeight);
                 entry.pushKV("confirmations", 1 + chainActive.Height() - pindex->nHeight);
@@ -429,9 +428,10 @@ UniValue gettxoutproof(const UniValue& params, bool fHelp)
     if (params.size() > 1)
     {
         hashBlock = uint256S(params[1].get_str());
-        if (!mapBlockIndex.count(hashBlock))
+        pblockindex = LookupBlockIndex(hashBlock);
+        if (!pblockindex) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
-        pblockindex = mapBlockIndex[hashBlock];
+        }
     } else {
         CCoins coins;
         if (pcoinsTip->GetCoins(oneTxid, coins) && coins.nHeight > 0 && coins.nHeight <= chainActive.Height())
@@ -443,9 +443,10 @@ UniValue gettxoutproof(const UniValue& params, bool fHelp)
         CTransaction tx;
         if (!GetTransaction(oneTxid, tx, Params().GetConsensus(), hashBlock, false) || hashBlock.IsNull())
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Transaction not yet in block");
-        if (!mapBlockIndex.count(hashBlock))
+        pblockindex = LookupBlockIndex(hashBlock);
+        if (!pblockindex) {
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Transaction index corrupt");
-        pblockindex = mapBlockIndex[hashBlock];
+        }
     }
 
     CBlock block;
@@ -491,8 +492,10 @@ UniValue verifytxoutproof(const UniValue& params, bool fHelp)
 
     LOCK(cs_main);
 
-    if (!mapBlockIndex.count(merkleBlock.header.GetHash()) || !chainActive.Contains(mapBlockIndex[merkleBlock.header.GetHash()]))
+    const CBlockIndex* pindex = LookupBlockIndex(merkleBlock.header.GetHash());
+    if (!pindex || !chainActive.Contains(pindex)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found in chain");
+    }
 
     BOOST_FOREACH(const uint256& hash, vMatch)
         res.push_back(hash.GetHex());

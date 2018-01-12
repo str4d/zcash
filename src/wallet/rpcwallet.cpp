@@ -104,7 +104,7 @@ void WalletTxToJSON(const CWalletTx& wtx, UniValue& entry)
     {
         entry.pushKV("blockhash", wtx.hashBlock.GetHex());
         entry.pushKV("blockindex", wtx.nIndex);
-        entry.pushKV("blocktime", mapBlockIndex[wtx.hashBlock]->GetBlockTime());
+        entry.pushKV("blocktime", LookupBlockIndex(wtx.hashBlock)->GetBlockTime());
         entry.pushKV("expiryheight", (int64_t)wtx.nExpiryHeight);
         status = "mined";
     }
@@ -1746,9 +1746,7 @@ UniValue listsinceblock(const UniValue& params, bool fHelp)
         uint256 blockId;
 
         blockId.SetHex(params[0].get_str());
-        BlockMap::iterator it = mapBlockIndex.find(blockId);
-        if (it != mapBlockIndex.end())
-            pindex = it->second;
+        pindex = LookupBlockIndex(blockId);
     }
 
     if (params.size() > 1)
@@ -3419,7 +3417,7 @@ struct txblock
         if (pwalletMain->mapWallet.count(hash)) {
             const CWalletTx& wtx = pwalletMain->mapWallet[hash];
             if (!wtx.hashBlock.IsNull())
-                height = mapBlockIndex[wtx.hashBlock]->nHeight;
+                height = LookupBlockIndex(wtx.hashBlock)->nHeight;
             index = wtx.nIndex;
             time = wtx.GetTxTime();
         }
@@ -4421,10 +4419,13 @@ UniValue z_getmigrationstatus(const UniValue& params, bool fHelp) {
                 unfinalizedMigratedAmount -= tx.valueBalance;
             }
             // If the transaction is in the mempool it will not be associated with a block yet
-            if (tx.hashBlock.IsNull() || mapBlockIndex[tx.hashBlock] == nullptr) {
+            if (tx.hashBlock.IsNull()) {
                 continue;
             }
-            CBlockIndex* blockIndex = mapBlockIndex[tx.hashBlock];
+            CBlockIndex* blockIndex = LookupBlockIndex(tx.hashBlock);
+            if (!blockIndex) {
+                continue;
+            }
             //  The value of "time_started" is the earliest Unix timestamp of any known
             // migration transaction involving this wallet; if there is no such transaction,
             // then the field is absent.

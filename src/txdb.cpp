@@ -329,7 +329,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const {
     }
     {
         LOCK(cs_main);
-        stats.nHeight = mapBlockIndex.find(stats.hashBlock)->second->nHeight;
+        stats.nHeight = LookupBlockIndex(stats.hashBlock)->nHeight;
     }
     stats.hashSerialized = ss.GetHash();
     stats.nTotalAmount = nTotalAmount;
@@ -481,8 +481,8 @@ bool CBlockTreeDB::ReadTimestampIndex(unsigned int high, unsigned int low,
             break;
         }
         if (fActiveOnly) {
-            CBlockIndex* pblockindex = mapBlockIndex[key.second.blockHash];
-            if (chainActive.Contains(pblockindex)) {
+            const CBlockIndex* pindex = LookupBlockIndex(key.second.blockHash);
+            if (pindex && chainActive.Contains(pindex)) {
                 hashes.push_back(std::make_pair(key.second.blockHash, key.second.timestamp));
             }
         } else {

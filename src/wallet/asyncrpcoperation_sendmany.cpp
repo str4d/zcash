@@ -755,10 +755,11 @@ bool AsyncRPCOperation_sendmany::main_impl() {
                 LOCK2(cs_main, pwalletMain->cs_wallet);
                 const CWalletTx& wtx = pwalletMain->mapWallet[jso.hash];
                 // Zero-confirmation notes belong to transactions which have not yet been mined
-                if (mapBlockIndex.find(wtx.hashBlock) == mapBlockIndex.end()) {
+                const CBlockIndex* pindex = LookupBlockIndex(wtx.hashBlock);
+                if (!pindex) {
                     throw JSONRPCError(RPC_WALLET_ERROR, strprintf("mapBlockIndex does not contain block hash %s", wtx.hashBlock.ToString()));
                 }
-                wtxHeight = mapBlockIndex[wtx.hashBlock]->nHeight;
+                wtxHeight = pindex->nHeight;
                 wtxDepth = wtx.GetDepthInMainChain();
             }
             LogPrint("zrpcunsafe", "%s: spending note (txid=%s, vJoinSplit=%d, jsoutindex=%d, amount=%s, height=%d, confirmations=%d)\n",
