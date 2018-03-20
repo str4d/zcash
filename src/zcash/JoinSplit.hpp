@@ -30,7 +30,8 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(witness);
+        auto path = witness.path();
+        READWRITE(path);
         READWRITE(note);
         READWRITE(key);
     }

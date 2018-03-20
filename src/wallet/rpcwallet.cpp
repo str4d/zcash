@@ -2507,7 +2507,62 @@ UniValue zc_sample_joinsplit(const UniValue& params, bool fHelp)
     CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
     ss << samplejoinsplit;
 
-    return HexStr(ss.begin(), ss.end());
+
+    const JSDescription& jsdescription = samplejoinsplit;
+    UniValue joinsplit(UniValue::VOBJ);
+
+    joinsplit.push_back(Pair("h_sig", jsdescription.witness.h_sig.GetHex()));
+
+    for (const auto input : jsdescription.witness.inputs) {
+        joinsplit.push_back(Pair("apk", input.note.a_pk.GetHex()));
+    }
+
+    joinsplit.push_back(Pair("vpub_old", ValueFromAmount(jsdescription.vpub_old)));
+    joinsplit.push_back(Pair("vpub_new", ValueFromAmount(jsdescription.vpub_new)));
+
+    joinsplit.push_back(Pair("anchor", jsdescription.anchor.GetHex()));
+
+    {
+        UniValue nullifiers(UniValue::VARR);
+        BOOST_FOREACH(const uint256 nf, jsdescription.nullifiers) {
+            nullifiers.push_back(nf.GetHex());
+        }
+        joinsplit.push_back(Pair("nullifiers", nullifiers));
+    }
+
+    {
+        UniValue commitments(UniValue::VARR);
+        BOOST_FOREACH(const uint256 commitment, jsdescription.commitments) {
+            commitments.push_back(commitment.GetHex());
+        }
+        joinsplit.push_back(Pair("commitments", commitments));
+    }
+
+    joinsplit.push_back(Pair("onetimePubKey", jsdescription.ephemeralKey.GetHex()));
+    joinsplit.push_back(Pair("randomSeed", jsdescription.randomSeed.GetHex()));
+
+    {
+        UniValue macs(UniValue::VARR);
+        BOOST_FOREACH(const uint256 mac, jsdescription.macs) {
+            macs.push_back(mac.GetHex());
+        }
+        joinsplit.push_back(Pair("macs", macs));
+    }
+
+    CDataStream ssProof(SER_NETWORK, PROTOCOL_VERSION);
+    ssProof << jsdescription.proof;
+    joinsplit.push_back(Pair("proof", HexStr(ssProof.begin(), ssProof.end())));
+
+    {
+        UniValue ciphertexts(UniValue::VARR);
+        for (const ZCNoteEncryption::Ciphertext ct : jsdescription.ciphertexts) {
+            ciphertexts.push_back(HexStr(ct.begin(), ct.end()));
+        }
+        joinsplit.push_back(Pair("ciphertexts", ciphertexts));
+    }
+
+    joinsplit.push_back(Pair("hexwithwitness", HexStr(ss.begin(), ss.end())));
+    return joinsplit;
 }
 
 UniValue zc_benchmark(const UniValue& params, bool fHelp)

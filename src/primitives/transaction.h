@@ -113,16 +113,10 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(vpub_old);
-        READWRITE(vpub_new);
-        READWRITE(anchor);
+        READWRITE(witness);
         READWRITE(nullifiers);
         READWRITE(commitments);
-        READWRITE(ephemeralKey);
-        READWRITE(randomSeed);
         READWRITE(macs);
-        READWRITE(proof);
-        READWRITE(ciphertexts);
     }
 
     friend bool operator==(const JSDescription& a, const JSDescription& b)
