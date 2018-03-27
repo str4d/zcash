@@ -440,8 +440,8 @@ TransactionBuilderResult TransactionBuilder::Build()
         auto tIn = tIns[nIn];
         SignatureData sigdata;
         bool signSuccess = ProduceSignature(
-            TransactionSignatureCreator(
-                keystore, &txNewConst, nIn, tIn.value, SIGHASH_ALL),
+            *keystore,
+            TransactionSignatureCreator(&txNewConst, nIn, tIn.value, SIGHASH_ALL),
             tIn.scriptPubKey, sigdata, consensusBranchId);
 
         if (!signSuccess) {
