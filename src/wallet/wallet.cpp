@@ -3772,7 +3772,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     if (sign)
                         signSuccess = ProduceSignature(*this, TransactionSignatureCreator(&txNewConst, nIn, coin.first->vout[coin.second].nValue, SIGHASH_ALL), scriptPubKey, sigdata, consensusBranchId);
                     else
-                        signSuccess = ProduceSignature(*this, DummySignatureCreator(), scriptPubKey, sigdata, consensusBranchId);
+                        signSuccess = ProduceSignature(*this, DUMMY_SIGNATURE_CREATOR, scriptPubKey, sigdata, consensusBranchId);
 
                     if (!signSuccess)
                     {

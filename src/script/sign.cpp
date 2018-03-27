@@ -341,45 +341,44 @@ SignatureData CombineSignatures(const CScript& scriptPubKey, const BaseSignature
 
 namespace {
 /** Dummy signature checker which accepts all signatures. */
-class DummySignatureChecker : public BaseSignatureChecker
+class DummySignatureChecker final : public BaseSignatureChecker
 {
 public:
     DummySignatureChecker() {}
-
     bool CheckSig(
         const std::vector<unsigned char>& scriptSig,
         const std::vector<unsigned char>& vchPubKey,
         const CScript& scriptCode,
-        uint32_t consensusBranchId) const
+        uint32_t consensusBranchId) const override { return true; }
+};
+const DummySignatureChecker DUMMY_CHECKER;
+
+class DummySignatureCreator final : public BaseSignatureCreator {
+public:
+    DummySignatureCreator() {}
+    const BaseSignatureChecker& Checker() const override { return DUMMY_CHECKER; }
+    bool CreateSig(
+        const SigningProvider& provider,
+        std::vector<unsigned char>& vchSig,
+        const CKeyID& keyid,
+        const CScript& scriptCode,
+        uint32_t consensusBranchId) const override
     {
+        // Create a dummy signature that is a valid DER-encoding
+        vchSig.assign(72, '\000');
+        vchSig[0] = 0x30;
+        vchSig[1] = 69;
+        vchSig[2] = 0x02;
+        vchSig[3] = 33;
+        vchSig[4] = 0x01;
+        vchSig[4 + 33] = 0x02;
+        vchSig[5 + 33] = 32;
+        vchSig[6 + 33] = 0x01;
+        vchSig[6 + 33 + 32] = SIGHASH_ALL;
         return true;
     }
 };
-const DummySignatureChecker dummyChecker;
 }
 
-const BaseSignatureChecker& DummySignatureCreator::Checker() const
-{
-    return dummyChecker;
-}
+const BaseSignatureCreator& DUMMY_SIGNATURE_CREATOR = DummySignatureCreator();
 
-bool DummySignatureCreator::CreateSig(
-    const SigningProvider& provider,
-    std::vector<unsigned char>& vchSig,
-    const CKeyID& keyid,
-    const CScript& scriptCode,
-    uint32_t consensusBranchId) const
-{
-    // Create a dummy signature that is a valid DER-encoding
-    vchSig.assign(72, '\000');
-    vchSig[0] = 0x30;
-    vchSig[1] = 69;
-    vchSig[2] = 0x02;
-    vchSig[3] = 33;
-    vchSig[4] = 0x01;
-    vchSig[4 + 33] = 0x02;
-    vchSig[5 + 33] = 32;
-    vchSig[6 + 33] = 0x01;
-    vchSig[6 + 33 + 32] = SIGHASH_ALL;
-    return true;
-}
