@@ -1,0 +1,132 @@
+diff -ru gmp-6.1.2/gmp-h.in gmp-6.1.2-win/gmp-h.in
+--- gmp-6.1.2/gmp-h.in	2016-12-16 16:45:27.000000000 +0100
++++ gmp-6.1.2-win/gmp-h.in	2017-01-31 00:12:54.000000000 +0100
+@@ -625,7 +625,7 @@
+ __GMP_DECLSPEC void mpz_add (mpz_ptr, mpz_srcptr, mpz_srcptr);
+ 
+ #define mpz_add_ui __gmpz_add_ui
+-__GMP_DECLSPEC void mpz_add_ui (mpz_ptr, mpz_srcptr, unsigned long int);
++__GMP_DECLSPEC void mpz_add_ui (mpz_ptr, mpz_srcptr, unsigned long long int);
+ 
+ #define mpz_addmul __gmpz_addmul
+ __GMP_DECLSPEC void mpz_addmul (mpz_ptr, mpz_srcptr, mpz_srcptr);
+@@ -830,7 +830,7 @@
+ 
+ #define mpz_get_ui __gmpz_get_ui
+ #if __GMP_INLINE_PROTOTYPES || defined (__GMP_FORCE_mpz_get_ui)
+-__GMP_DECLSPEC unsigned long int mpz_get_ui (mpz_srcptr) __GMP_NOTHROW __GMP_ATTRIBUTE_PURE;
++__GMP_DECLSPEC unsigned long long int mpz_get_ui (mpz_srcptr) __GMP_NOTHROW __GMP_ATTRIBUTE_PURE;
+ #endif
+ 
+ #define mpz_getlimbn __gmpz_getlimbn
+@@ -1029,7 +1029,7 @@
+ __GMP_DECLSPEC int mpz_set_str (mpz_ptr, const char *, int);
+ 
+ #define mpz_set_ui __gmpz_set_ui
+-__GMP_DECLSPEC void mpz_set_ui (mpz_ptr, unsigned long int);
++__GMP_DECLSPEC void mpz_set_ui (mpz_ptr, unsigned long long int);
+ 
+ #define mpz_setbit __gmpz_setbit
+ __GMP_DECLSPEC void mpz_setbit (mpz_ptr, mp_bitcnt_t);
+@@ -1052,10 +1052,10 @@
+ __GMP_DECLSPEC void mpz_sub (mpz_ptr, mpz_srcptr, mpz_srcptr);
+ 
+ #define mpz_sub_ui __gmpz_sub_ui
+-__GMP_DECLSPEC void mpz_sub_ui (mpz_ptr, mpz_srcptr, unsigned long int);
++__GMP_DECLSPEC void mpz_sub_ui (mpz_ptr, mpz_srcptr, unsigned long long int);
+ 
+ #define mpz_ui_sub __gmpz_ui_sub
+-__GMP_DECLSPEC void mpz_ui_sub (mpz_ptr, unsigned long int, mpz_srcptr);
++__GMP_DECLSPEC void mpz_ui_sub (mpz_ptr, unsigned long long int, mpz_srcptr);
+ 
+ #define mpz_submul __gmpz_submul
+ __GMP_DECLSPEC void mpz_submul (mpz_ptr, mpz_srcptr, mpz_srcptr);
+@@ -1763,7 +1763,7 @@
+ #if ! defined (__GMP_FORCE_mpz_get_ui)
+ __GMP_EXTERN_INLINE
+ #endif
+-unsigned long
++unsigned long long
+ mpz_get_ui (mpz_srcptr __gmp_z) __GMP_NOTHROW
+ {
+   mp_ptr __gmp_p = __gmp_z->_mp_d;
+@@ -1776,6 +1776,7 @@
+ #if GMP_NAIL_BITS == 0 || defined (_LONG_LONG_LIMB)
+   /* limb==long and no nails, or limb==longlong, one limb is enough */
+   return (__gmp_n != 0 ? __gmp_l : 0);
++
+ #else
+   /* limb==long and nails, need two limbs when available */
+   __gmp_n = __GMP_ABS (__gmp_n);
+@@ -1784,6 +1785,7 @@
+   else
+     return __gmp_l + (__gmp_p[1] << GMP_NUMB_BITS);
+ #endif
++
+ }
+ #endif
+ 
+@@ -2069,9 +2071,9 @@
+ #define __GMPN_CMP(result, xp, yp, size)                                \
+   do {                                                                  \
+     mp_size_t  __gmp_i;                                                 \
+-    mp_limb_t  __gmp_x, __gmp_y;                                        \
++    unsigned long long  __gmp_x, __gmp_y;                               \
+                                                                         \
+-    /* ASSERT ((size) >= 0); */                                         \
++    /*ASSERT ((size) >= 0);*/	                                        \
+                                                                         \
+     (result) = 0;                                                       \
+     __gmp_i = (size);                                                   \
+diff -ru gmp-6.1.2/mpz/aors_ui.h gmp-6.1.2-win/mpz/aors_ui.h
+--- gmp-6.1.2/mpz/aors_ui.h	2016-12-16 16:45:27.000000000 +0100
++++ gmp-6.1.2-win/mpz/aors_ui.h	2017-01-31 00:12:54.000000000 +0100
+@@ -56,14 +56,14 @@
+ 
+ 
+ void
+-FUNCTION (mpz_ptr w, mpz_srcptr u, unsigned long int vval)
++FUNCTION (mpz_ptr w, mpz_srcptr u, unsigned long long int vval)
+ {
+   mp_srcptr up;
+   mp_ptr wp;
+   mp_size_t usize, wsize;
+   mp_size_t abs_usize;
+ 
+-#if BITS_PER_ULONG > GMP_NUMB_BITS  /* avoid warnings about shift amount */
++#if BITS_PER_ULLONG > GMP_NUMB_BITS  /* avoid warnings about shift amount */
+   if (vval > GMP_NUMB_MAX)
+     {
+       mpz_t v;
+diff -ru gmp-6.1.2/mpz/set_ui.c gmp-6.1.2-win/mpz/set_ui.c
+--- gmp-6.1.2/mpz/set_ui.c	2016-12-16 16:45:27.000000000 +0100
++++ gmp-6.1.2-win/mpz/set_ui.c	2017-01-31 00:12:54.000000000 +0100
+@@ -33,14 +33,14 @@
+ #include "gmp-impl.h"
+ 
+ void
+-mpz_set_ui (mpz_ptr dest, unsigned long int val)
++mpz_set_ui (mpz_ptr dest, unsigned long long int val)
+ {
+   mp_size_t size;
+ 
+   PTR (dest)[0] = val & GMP_NUMB_MASK;
+   size = val != 0;
+ 
+-#if BITS_PER_ULONG > GMP_NUMB_BITS  /* avoid warnings about shift amount */
++#if BITS_PER_ULONG < GMP_NUMB_BITS  /* avoid warnings about shift amount */
+   if (val > GMP_NUMB_MAX)
+     {
+       MPZ_REALLOC (dest, 2);
+diff -ru gmp-6.1.2/mpz/ui_sub.c gmp-6.1.2-win/mpz/ui_sub.c
+--- gmp-6.1.2/mpz/ui_sub.c	2016-12-16 16:45:27.000000000 +0100
++++ gmp-6.1.2-win/mpz/ui_sub.c	2017-01-31 00:12:54.000000000 +0100
+@@ -32,7 +32,7 @@
+ #include "gmp-impl.h"
+ 
+ void
+-mpz_ui_sub (mpz_ptr w, unsigned long int uval, mpz_srcptr v)
++mpz_ui_sub (mpz_ptr w, unsigned long long int uval, mpz_srcptr v)
+ {
+   mp_ptr vp, wp;
+   mp_size_t vn, wn;
