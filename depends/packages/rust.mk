@@ -10,6 +10,10 @@ $(package)_rust_target_mingw32=x86_64-pc-windows-gnu
 $(package)_file_name_mingw32=rust-$($(package)_version)-x86_64-pc-windows-gnu.tar.gz
 $(package)_sha256_hash_mingw32=4586d69edcb22f7ebd651cd305dce67ead065e8a60994a7d64fc8b472fc4e51b
 
+$(package)_rust_target_arm=arm-unknown-linux-gnueabihf
+$(package)_file_name_arm=rust-$($(package)_version)-arm-unknown-linux-gnueabihf.tar.gz
+$(package)_sha256_hash_arm=10e1c03e8e86f9357615befa5b0ddc32cdf3c85e1e019d7225850be3b3c3da91
+
 define $(package)_cross_compile_fetch_cmds
 $(call fetch_file,$(package),$($(package)_download_path),$($(package)_download_file),$($(package)_file_name),$($(package)_sha256_hash)) && \
 $(call fetch_file,$(package),$($(package)_download_path),$($(package)_file_name_$(build_os)),$($(package)_file_name_$(build_os)),$($(package)_sha256_hash_$(build_os)))
@@ -45,6 +49,22 @@ endef
 
 define $(package)_stage_cmds
   $(call $(package)_cross_compile_stage_cmds,$(host_os),$($(package)_rust_target_$(host_os)))
+endef
+
+else ifeq ($(host_arch),arm)
+$(package)_build_subdir=buildos
+$(package)_extra_sources = $($(package)_file_name_$(build_os))
+
+define $(package)_fetch_cmds
+  $(call $(package)_cross_compile_fetch_cmds)
+endef
+
+define $(package)_extract_cmds
+  $(call $(package)_cross_compile_extract_cmds,$(host_arch))
+endef
+
+define $(package)_stage_cmds
+  $(call $(package)_cross_compile_stage_cmds,$(host_arch),$($(package)_rust_target_$(host_arch)))
 endef
 else
 

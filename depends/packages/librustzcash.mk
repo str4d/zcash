@@ -10,6 +10,8 @@ $(package)_patches=cargo.config
 
 ifeq ($(host_os),mingw32)
 $(package)_library_file=target/x86_64-pc-windows-gnu/release/rustzcash.lib
+else ifeq ($(host_arch),arm)
+$(package)_library_file=target/arm-unknown-linux-gnueabihf/release/librustzcash.a
 else
 $(package)_library_file=target/release/librustzcash.a
 endif
@@ -17,6 +19,7 @@ endif
 define $(package)_set_vars
 $(package)_build_opts=--frozen --release
 $(package)_build_opts_mingw32=--target=x86_64-pc-windows-gnu
+$(package)_build_opts_arm=--target=arm-unknown-linux-gnueabihf
 endef
 
 define $(package)_preprocess_cmds
