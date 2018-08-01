@@ -2556,10 +2556,11 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
     UniValue results(UniValue::VARR);
 
     if (zaddrs.size() > 0) {
-        std::vector<CUnspentSproutNotePlaintextEntry> entries;
-        pwalletMain->GetUnspentFilteredNotes(entries, zaddrs, nMinDepth, nMaxDepth, !fIncludeWatchonly);
+        std::vector<CUnspentSproutNotePlaintextEntry> sproutEntries;
+        std::vector<UnspentSaplingNoteEntry> saplingEntries;
+        pwalletMain->GetUnspentFilteredNotes(sproutEntries, saplingEntries, zaddrs, nMinDepth, nMaxDepth, !fIncludeWatchonly);
         std::set<std::pair<PaymentAddress, uint256>> nullifierSet = pwalletMain->GetNullifiersForAddresses(zaddrs);
-        for (CUnspentSproutNotePlaintextEntry & entry : entries) {
+        for (CUnspentSproutNotePlaintextEntry & entry : sproutEntries) {
             UniValue obj(UniValue::VOBJ);
             obj.push_back(Pair("txid", entry.jsop.hash.ToString()));
             obj.push_back(Pair("jsindex", (int)entry.jsop.js ));
@@ -2576,6 +2577,7 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
             }
             results.push_back(obj);
         }
+        // TODO: Sapling
     }
 
     return results;
@@ -3244,12 +3246,14 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
 
 CAmount getBalanceZaddr(std::string address, int minDepth = 1, bool ignoreUnspendable=true) {
     CAmount balance = 0;
-    std::vector<CSproutNotePlaintextEntry> entries;
+    std::vector<CSproutNotePlaintextEntry> sproutEntries;
+    std::vector<SaplingNoteEntry> saplingEntries;
     LOCK2(cs_main, pwalletMain->cs_wallet);
-    pwalletMain->GetFilteredNotes(entries, address, minDepth, true, ignoreUnspendable);
-    for (auto & entry : entries) {
+    pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, address, minDepth, true, ignoreUnspendable);
+    for (auto & entry : sproutEntries) {
         balance += CAmount(entry.plaintext.value());
     }
+    // TODO: Sapling
     return balance;
 }
 
@@ -3305,10 +3309,11 @@ UniValue z_listreceivedbyaddress(const UniValue& params, bool fHelp)
     }
 
     UniValue result(UniValue::VARR);
-    std::vector<CSproutNotePlaintextEntry> entries;
-    pwalletMain->GetFilteredNotes(entries, fromaddress, nMinDepth, false, false);
+    std::vector<CSproutNotePlaintextEntry> sproutEntries;
+    std::vector<SaplingNoteEntry> saplingEntries;
+    pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, fromaddress, nMinDepth, false, false);
     auto nullifierSet = hasSproutSpendingKey ? pwalletMain->GetNullifiersForAddresses({zaddr}) : std::set<std::pair<PaymentAddress, uint256>>();
-    for (CSproutNotePlaintextEntry & entry : entries) {
+    for (CSproutNotePlaintextEntry & entry : sproutEntries) {
         UniValue obj(UniValue::VOBJ);
         obj.push_back(Pair("txid", entry.jsop.hash.ToString()));
         obj.push_back(Pair("amount", ValueFromAmount(CAmount(entry.plaintext.value()))));
@@ -3322,6 +3327,7 @@ UniValue z_listreceivedbyaddress(const UniValue& params, bool fHelp)
         }
         result.push_back(obj);
     }
+    // TODO: Sapling
     return result;
 }
 
@@ -4243,11 +4249,12 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
 
     if (useAny || useAnyNote || zaddrs.size() > 0) {
         // Get available notes
-        std::vector<CSproutNotePlaintextEntry> entries;
-        pwalletMain->GetFilteredNotes(entries, zaddrs);
+        std::vector<CSproutNotePlaintextEntry> sproutEntries;
+        std::vector<SaplingNoteEntry> saplingEntries;
+        pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, zaddrs);
 
         // Find unspent notes and update estimated size
-        for (CSproutNotePlaintextEntry& entry : entries) {
+        for (CSproutNotePlaintextEntry& entry : sproutEntries) {
             noteCounter++;
             CAmount nValue = entry.plaintext.value();
 
@@ -4261,8 +4268,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
                     maxedOutNotesFlag = true;
                 } else {
                     estimatedTxSize += increase;
-                    // TODO: Add Sapling support
-                    auto zaddr = boost::get<SproutPaymentAddress>(entry.address);
+                    auto zaddr = entry.address;
                     SproutSpendingKey zkey;
                     pwalletMain->GetSproutSpendingKey(zaddr, zkey);
                     noteInputs.emplace_back(entry.jsop, entry.plaintext.note(zaddr), nValue, zkey);
@@ -4274,6 +4280,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
                 remainingNoteValue += nValue;
             }
         }
+        // TODO: Add Sapling support
     }
 
     size_t numUtxos = utxoInputs.size();
