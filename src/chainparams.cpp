@@ -281,7 +281,7 @@ public:
         consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nProtocolVersion = 170003;
         consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 207500;
         consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nProtocolVersion = 170006;
-        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 252500;
+        consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 275142;
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000000000000000000001d0c4d9cd");
