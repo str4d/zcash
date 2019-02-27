@@ -758,6 +758,7 @@ if test x$use_pkgconfig = xyes; then
     [
       PKG_CHECK_MODULES([SSL], [libssl],, [AC_MSG_ERROR(openssl  not found.)])
       PKG_CHECK_MODULES([CRYPTO], [libcrypto],,[AC_MSG_ERROR(libcrypto  not found.)])
+      PKG_CHECK_MODULES([PROTOBUF], [protobuf],,[AC_MSG_ERROR(protobuf  not found.)])
       if test x$build_bitcoin_utils$build_bitcoind$bitcoin_enable_qt$use_tests != xnononono; then
         PKG_CHECK_MODULES([EVENT], [libevent],, [AC_MSG_ERROR(libevent not found.)])
         if test x$TARGET_OS != xwindows; then
@@ -816,7 +817,11 @@ else
       ;;
     esac
   fi
+
+  AC_CHECK_LIB([protobuf],[main],PROTOBUF_LIBS=-lprotobuf,AC_MSG_ERROR(libprotobuf missing))
 fi
+
+AC_PATH_PROG(PROTOC, protoc)
 
 RUST_LIBS=""
 case $host in
@@ -967,6 +972,7 @@ AC_SUBST(SSL_LIBS)
 AC_SUBST(EVENT_LIBS)
 AC_SUBST(EVENT_PTHREADS_LIBS)
 AC_SUBST(ZMQ_LIBS)
+AC_SUBST(PROTOBUF_LIBS)
 AC_SUBST(LIBZCASH_LIBS)
 AC_SUBST(PROTON_LIBS)
 AC_CONFIG_FILES([Makefile src/Makefile doc/man/Makefile src/test/buildenv.py])

@@ -61,6 +61,8 @@
 #include <boost/thread.hpp>
 #include <openssl/crypto.h>
 
+#include <google/protobuf/stubs/common.h>
+
 #if ENABLE_ZMQ
 #include "zmq/zmqnotificationinterface.h"
 #endif
@@ -275,6 +277,7 @@ void Shutdown()
     pzcashParams = NULL;
     globalVerifyHandle.reset();
     ECC_Stop();
+    google::protobuf::ShutdownProtobufLibrary();
     LogPrintf("%s: done\n", __func__);
 }
 
@@ -681,6 +684,10 @@ bool InitSanityCheck(void)
     }
     if (!glibc_sanity_test() || !glibcxx_sanity_test())
         return false;
+
+    // Verify that the version of the library that we linked against is
+    // compatible with the version of the headers we compiled against.
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
 
     return true;
 }

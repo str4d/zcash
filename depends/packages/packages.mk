@@ -75,9 +75,9 @@ rust_crates := \
   crate_zcash_proofs
 rust_packages := rust $(rust_crates)
 proton_packages := proton
-zcash_packages := libsodium utfcpp
+zcash_packages := libsodium protobuf utfcpp
 packages := boost openssl libevent zeromq $(zcash_packages) googletest
-native_packages := native_ccache
+native_packages := native_ccache native_protobuf
 
 wallet_packages=bdb
 
