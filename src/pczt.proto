@@ -1,0 +1,163 @@
+// The Partially Created Zcash Transaction (PCZT) format.
+//
+// The general design follows BIP 174: Partially Signed Bitcoin Transaction Format.
+// The specification is a protobuf.
+//
+// General flow for creating a shielded transaction:
+// - Create "unsigned transaction"
+//   - In practice means deciding on the global parts of the transaction
+// - Collect each output
+//   - Proofs can be created at this time
+// - Decide on an anchor
+//   - All spends should use the same anchor for indistinguishability
+//   - In a future transaction version, all spends will be required to do so
+// - Collect each spend
+//   - Proofs can and should be created at this time
+// - Create proofs for each spend and output
+//   - Data necessary for proofs can be stripped out of the format
+// - Collect proofs
+// - Distribute collected data to signers
+//   - Signers must verify the transaction before signing, and reject if not satisfied.
+//   - This is the no-turning-back point regarding spend authorization!
+// - Collect signatures
+// - Create binding signature
+//   - The party that performs this does not need to be trusted, because each signer
+//     has verified the transaction and signed it, so the bindingSig can only be
+//     computed over the same data if a valid transaction is to be created.
+// - Extract final transaction
+//
+// Goal is to split up the parts of creating a transaction across distinct entities:
+// - Creator
+//   - Creates the base PCZT with no information about spends or outputs.
+// - Updater
+//   - Adds information necessary for subsequent entities to proceed, such as spends and
+//     outputs.
+// - Prover
+//   - Needs all private information for a single spend or output.
+//   - In practice, the Updater that adds a given spend or output will either act as
+//     the Prover themselves, or add the necessary data, offload to the Prover, and
+//     then receive back the PCZT with private data stripped and proof added.
+// - Signer
+//   - Needs sufficient information to verify that the proof is over the correct data.
+//     without needing to verify the proof itself.
+//   - A Signer should only need to implement:
+//     - Pedersen commitments using Jubjub arithmetic (for note and value commitments)
+//     - BLAKE2b and BLAKE2s (and the various PRFs / CRHs they are used in)
+//     - Nullifier check (using Jubjub arithmetic)
+//     - KDF plus either encryption or decryption (AEAD_CHACHA20_POLY1305)
+//     - SignatureHash algorithm
+//     - Signatures (RedJubjub, i.e. randomized EdDSA on the Jubjub curve)
+//     - A source of randomness.
+// - Combiner
+//   - Combines several PCZTs that represent the same transaction into a single PCZT.
+//   - Because we aren't storing the partial transaction in network format, we need to
+//     carefully define equality for PCZTs.
+//     - If we say "pczt.global must be identical" then we should always update bsk when
+//       adding spends or outputs, even if rcv is present.
+//     - Once every spend and output has its zkproof field set, PCZT equality MUST include
+//       the SpendDescription and OutputDescription contents being identical.
+//       - In practice enforced by creating a TransactionData / CMutableTransaction from
+//         the PCZT, with spendAuthSigs and bindingSig empty, and then enforcing equality.
+//       - This is equivalent to BIP 147's equality definition (the partial transactions
+//         must be identical).
+// - Spend Finalizer
+//   - Currently unnecessary, but when shielded multisig is implemented, this would be the
+//     entity that combines the separate signatures into a multisignature.
+// - Transaction Extractor
+//   - Creates bindingSig and extracts the final transaction.
+
+syntax = "proto3";
+
+// Remember that proto3 fields are all optional.
+// A field that is not present will be set to its zero value.
+// bytes fields of hashes are in canonical little-endian format.
+
+package pczt;
+
+// The PCZT.
+message PartiallyCreatedTransaction {
+    // The version of this wire format, for storage.
+    uint32 protoVersion = 1;
+    PcztGlobal global = 2;
+    repeated PcztSpend spends = 3;
+    repeated PcztOutput outputs = 4;
+}
+
+// Transaction information that is not specific to spends or outputs.
+message PcztGlobal {
+    // Something to indicate testnet vs mainnet?
+    uint32 version = 1;
+    fixed32 versionGroupId = 2;
+    uint32 lockTime = 3;
+    uint32 expiryHeight = 4;
+    int64 valueBalance = 5;
+
+    // Common anchor for all spends
+    bytes saplingAnchor = 6;
+
+    // Can be updated each time a spend or output is added, _iff_ they are added
+    // sequentially. For parallel workflows, we'd need to leave rcvs in the PCZTs, and
+    // then a Combiner would compute bsk.
+    bytes bsk = 7;
+    bytes cvSum = 8;
+}
+
+// Information about a Sapling spend within a transaction.
+message PcztSpend {
+    // SpendDescription contents.
+    // - zkproof is empty until a proof has been generated.
+    //   - TODO: Optionally provide extra information here for proof-generators?
+    // - spendAuthSig is empty until the spend has been signed.
+    bytes cv = 1;
+    bytes nf = 2;
+    bytes rk = 3;
+    bytes zkproof = 4;
+    bytes spendAuthSig = 5;
+
+    // Spending key re-randomizer. Must be set before generating the proof,
+    // and persisted until the spend has been signed.
+    bytes alpha = 6;
+
+    // This exposes the value to all participants, but is necessary for signers who want
+    // to verify values and calculate change. For signers who don't need this information,
+    // we can drop the values and compress the rcvs into the bsk global.
+    uint64 value = 7;
+    // TODO: is it safe to reveal rcv but _not_ value?
+    bytes rcv = 8;
+
+    Zip32Key key = 9;
+}
+
+// Information about a Sapling output within a transaction.
+message PcztOutput {
+    // OutputDescription contents.
+    // - zkproof is empty until a proof has been generated.
+    //   - TODO: Optionally provide extra information here for proof-generators?
+    bytes cv = 1;
+    bytes cmu = 2;
+    bytes epk = 3;
+    bytes encCiphertext = 4;
+    bytes outCiphertext = 5;
+    bytes zkproof = 6;
+
+    // This exposes the value to all participants, but is necessary for signers who want
+    // to verify values and calculate change. For signers who don't need this information,
+    // we can drop the values and compress the rcvs into the bsk global.
+    uint64 value = 7;
+    bytes rcv = 8;
+
+    // Do we need it for outputs? Check why BIP 174 has it.
+    Zip32Key key = 9;
+    // Is this sufficient information to detect change efficiently?
+    bytes to = 10;
+}
+
+// A derivation path to a ZIP 32 Sapling key.
+message Zip32Key {
+    // This leaks the ExtendedFullViewingKey to all participants.
+    // TODO: Check why BIP 174 has the public key
+    bytes extfvk = 1;
+    // TODO: Use master key fingerprint, not HD seed fingerprint?
+    bytes masterFingerprint = 2;
+    repeated uint32 derivationPath = 3;
+}

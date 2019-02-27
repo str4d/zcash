@@ -308,6 +308,7 @@ libbitcoin_server_a_SOURCES = \
   miner.cpp \
   net.cpp \
   noui.cpp \
+  pczt.proto \
   policy/fees.cpp \
   policy/policy.cpp \
   pow.cpp \
@@ -328,6 +329,13 @@ libbitcoin_server_a_SOURCES = \
   validationinterface.cpp \
   $(BITCOIN_CORE_H) \
   $(LIBZCASH_H)
+
+nodist_libbitcoin_server_a_SOURCES = \
+  pczt.pb.cc \
+  pczt.pb.h
+
+# Ensure that the protobuf is generated before it is needed.
+libbitcoin_server_a-pczt.$(OBJEXT): pczt.pb.h
 
 if ENABLE_ZMQ
 libbitcoin_zmq_a_CPPFLAGS = $(BITCOIN_INCLUDES) $(ZMQ_CFLAGS)
