@@ -617,6 +617,7 @@ double benchmark_create_sapling_spend()
     struct timeval tv_start;
     timer_start(tv_start);
 
+    uint256 rcv;
     SpendDescription sdesc;
     bool result = librustzcash_sapling_spend_proof(
         ctx,
@@ -628,6 +629,7 @@ double benchmark_create_sapling_spend()
         note.value(),
         anchor.begin(),
         witnessChars.data(),
+        rcv.begin(),
         sdesc.cv.begin(),
         sdesc.rk.begin(),
         sdesc.zkproof.data());
@@ -666,6 +668,7 @@ double benchmark_create_sapling_output()
     struct timeval tv_start;
     timer_start(tv_start);
 
+    uint256 rcv;
     OutputDescription odesc;
     bool result = librustzcash_sapling_output_proof(
         ctx,
@@ -673,6 +676,7 @@ double benchmark_create_sapling_output()
         addressBytes.data(),
         note.r.begin(),
         note.value(),
+        rcv.begin(),
         odesc.cv.begin(),
         odesc.zkproof.begin());
 

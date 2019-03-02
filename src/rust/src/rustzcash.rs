@@ -856,6 +856,7 @@ pub extern "C" fn librustzcash_sapling_output_proof(
     payment_address: *const [c_uchar; 43],
     rcm: *const [c_uchar; 32],
     value: u64,
+    rcv_out: *mut [c_uchar; 32],
     cv: *mut [c_uchar; 32],
     zkproof: *mut [c_uchar; GROTH_PROOF_SIZE],
 ) -> bool {
@@ -879,7 +880,7 @@ pub extern "C" fn librustzcash_sapling_output_proof(
     };
 
     // Create proof
-    let (proof, value_commitment) = unsafe { &mut *ctx }.output_proof(
+    let (proof, value_commitment, rcv) = unsafe { &mut *ctx }.output_proof(
         esk,
         payment_address,
         rcm,
@@ -892,6 +893,11 @@ pub extern "C" fn librustzcash_sapling_output_proof(
     proof
         .write(&mut (unsafe { &mut *zkproof })[..])
         .expect("should be able to serialize a proof");
+
+    // Write rcv to the caller
+    rcv.into_repr()
+        .write_le(&mut unsafe { &mut *rcv_out }[..])
+        .expect("should be able to serialize rcv");
 
     // Write the value commitment to the caller
     value_commitment
@@ -981,6 +987,7 @@ pub extern "C" fn librustzcash_sapling_spend_proof(
     value: u64,
     anchor: *const [c_uchar; 32],
     merkle_path: *const [c_uchar; 1 + 33 * SAPLING_TREE_DEPTH + 8],
+    rcv_out: *mut [c_uchar; 32],
     cv: *mut [c_uchar; 32],
     rk_out: *mut [c_uchar; 32],
     zkproof: *mut [c_uchar; GROTH_PROOF_SIZE],
@@ -1037,7 +1044,7 @@ pub extern "C" fn librustzcash_sapling_spend_proof(
     };
 
     // Create proof
-    let (proof, value_commitment, rk) = unsafe { &mut *ctx }
+    let (proof, value_commitment, rcv, rk) = unsafe { &mut *ctx }
         .spend_proof(
             proof_generation_key,
             diversifier,
@@ -1051,6 +1058,11 @@ pub extern "C" fn librustzcash_sapling_spend_proof(
             &JUBJUB,
         )
         .expect("proving should not fail");
+
+    // Write rcv to the caller
+    rcv.into_repr()
+        .write_le(&mut unsafe { &mut *rcv_out }[..])
+        .expect("should be able to serialize rcv");
 
     // Write value commitment to caller
     value_commitment
@@ -1075,6 +1087,47 @@ pub extern "C" fn librustzcash_sapling_proving_ctx_init() -> *mut SaplingProving
     let ctx = Box::new(SaplingProvingContext::new());
 
     Box::into_raw(ctx)
+}
+
+/// Creates a Sapling proving context from the given bsk. Please free this when you're
+/// done.
+#[no_mangle]
+pub extern "system" fn librustzcash_sapling_proving_ctx_init_from_parts(
+    bsk: *const [c_uchar; 32],
+    cv_sum: *const [c_uchar; 32],
+) -> *mut SaplingProvingContext {
+    let bsk = match Fs::from_repr(read_fs(unsafe { &*bsk })) {
+        Ok(p) => p,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let cv_sum = match edwards::Point::<Bls12, Unknown>::read(&(unsafe { &*cv_sum })[..], &JUBJUB) {
+        Ok(p) => p,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let ctx = Box::new(SaplingProvingContext::from_parts(bsk, cv_sum));
+
+    Box::into_raw(ctx)
+}
+
+#[no_mangle]
+pub extern "system" fn librustzcash_sapling_proving_ctx_into_parts(
+    ctx: *mut SaplingProvingContext,
+    bsk_ret: *mut [c_uchar; 32],
+    cv_sum_ret: *mut [c_uchar; 32],
+) {
+    let (bsk, cv_sum) = unsafe { Box::from_raw(ctx) }.into_parts();
+
+    // Write out bsk
+    let bsk = redjubjub::PrivateKey::<Bls12>(bsk);
+    bsk.write(&mut (unsafe { &mut *bsk_ret })[..])
+        .expect("bsk should be 32 bytes");
+
+    // Write out cv_sum
+    cv_sum
+        .write(&mut (unsafe { &mut *cv_sum_ret })[..])
+        .expect("cv_sum should be 32 bytes");
 }
 
 /// Frees a Sapling proving context returned from

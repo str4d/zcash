@@ -36,3 +36,12 @@ zcash_proofs = "0.2"
 lto = true
 panic = 'abort'
 codegen-units = 1
+
+[patch.crates-io]
+bellman = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }
+ff = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }
+group = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }
+pairing = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }
+zcash_history = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }
+zcash_primitives = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }
+zcash_proofs = { git = "https://github.com/str4d/librustzcash.git", branch = "expose-rcv" }

@@ -22,7 +22,7 @@ SpendDescriptionInfo::SpendDescriptionInfo(
     librustzcash_sapling_generate_r(alpha.begin());
 }
 
-boost::optional<OutputDescription> OutputDescriptionInfo::Build(void* ctx) {
+boost::optional<std::pair<OutputDescription, uint256>> OutputDescriptionInfo::Build(void* ctx) {
     auto cmu = this->note.cmu();
     if (!cmu) {
         return boost::none;
@@ -42,6 +42,7 @@ boost::optional<OutputDescription> OutputDescriptionInfo::Build(void* ctx) {
     ss << address;
     std::vector<unsigned char> addressBytes(ss.begin(), ss.end());
 
+    uint256 rcv;
     OutputDescription odesc;
     if (!librustzcash_sapling_output_proof(
             ctx,
@@ -49,6 +50,7 @@ boost::optional<OutputDescription> OutputDescriptionInfo::Build(void* ctx) {
             addressBytes.data(),
             this->note.r.begin(),
             this->note.value(),
+            rcv.begin(),
             odesc.cv.begin(),
             odesc.zkproof.begin())) {
         return boost::none;
@@ -65,7 +67,7 @@ boost::optional<OutputDescription> OutputDescriptionInfo::Build(void* ctx) {
         odesc.cmu,
         encryptor);
 
-    return odesc;
+    return std::make_pair(odesc, rcv);
 }
 
 TransactionBuilderResult::TransactionBuilderResult(const CTransaction& tx) : maybeTx(tx) {}
@@ -323,6 +325,7 @@ TransactionBuilderResult TransactionBuilder::Build()
         ss << spend.witness.path();
         std::vector<unsigned char> witness(ss.begin(), ss.end());
 
+        uint256 rcv;
         SpendDescription sdesc;
         if (!librustzcash_sapling_spend_proof(
                 ctx,
@@ -334,6 +337,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 spend.note.value(),
                 spend.anchor.begin(),
                 witness.data(),
+                rcv.begin(),
                 sdesc.cv.begin(),
                 sdesc.rk.begin(),
                 sdesc.zkproof.data())) {
@@ -360,7 +364,7 @@ TransactionBuilderResult TransactionBuilder::Build()
             return TransactionBuilderResult("Failed to create output description");
         }
 
-        mtx.vShieldedOutput.push_back(odesc.get());
+        mtx.vShieldedOutput.push_back(odesc.get().first);
     }
 
     //

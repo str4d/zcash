@@ -96,6 +96,19 @@ extern "C" {
     /// Creates a Sapling proving context. Please free this when you're done.
     void * librustzcash_sapling_proving_ctx_init();
 
+    /// Creates a Sapling proving context from the given parts. Please free
+    /// this when you're done.
+    void * librustzcash_sapling_proving_ctx_init_from_parts(
+        const unsigned char *bsk,
+        const unsigned char *cv_sum
+    );
+
+    /// Frees the given proving context and returns its underlying parts.
+    void librustzcash_sapling_proving_ctx_into_parts(
+        void *ctx,
+        unsigned char *bsk,
+        unsigned char *cv_sum);
+
     /// This function (using the proving context) constructs a Spend proof
     /// given the necessary witness information. It outputs `cv` (the value
     /// commitment) and `rk` (so that you don't have to compute it) along
@@ -110,6 +123,7 @@ extern "C" {
         const uint64_t value,
         const unsigned char *anchor,
         const unsigned char *witness,
+        unsigned char *rcv,
         unsigned char *cv,
         unsigned char *rk,
         unsigned char *zkproof
@@ -124,6 +138,7 @@ extern "C" {
         const unsigned char *payment_address,
         const unsigned char *rcm,
         const uint64_t value,
+        unsigned char *rcv,
         unsigned char *cv,
         unsigned char *zkproof
     );

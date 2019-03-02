@@ -167,7 +167,7 @@ public:
             librustzcash_sapling_proving_ctx_free(ctx);
             throw new std::runtime_error("Failed to create shielded output for miner");
         }
-        mtx.vShieldedOutput.push_back(odesc.get());
+        mtx.vShieldedOutput.push_back(odesc.get().first);
 
         // Empty output script.
         uint256 dataToBeSigned;
