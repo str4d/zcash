@@ -13,6 +13,7 @@
 #include "main.h"
 #include "merkleblock.h"
 #include "net.h"
+#include "pczt.h"
 #include "policy/policy.h"
 #include "primitives/transaction.h"
 #include "rpc/server.h"
@@ -21,6 +22,7 @@
 #include "script/sign.h"
 #include "script/standard.h"
 #include "uint256.h"
+#include "util/bip32.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #endif
@@ -1093,6 +1095,254 @@ UniValue sendrawtransaction(const UniValue& params, bool fHelp)
     return hashTx.GetHex();
 }
 
+UniValue createpczt(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            "createpczt\n"
+            "\nCreates a transaction in the Partially Created Transaction format.\n"
+            "\nResult:\n"
+            "\"pczt\" (string) The resulting raw transaction, as a base64-encoded string\n"
+            "\nExamples:\n"
+            "\nCreate a transaction\n"
+            + HelpExampleCli("createpczt", "") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("createpczt", "")
+        );
+
+    LOCK(cs_main);
+
+    auto pczt = new Pczt(Params().GetConsensus(), chainActive.Height() + 1);
+
+    return EncodeBase64(pczt->Serialize());
+}
+
+UniValue Zip32KeyToJSON(const pczt::Zip32Key& key)
+{
+    UniValue obj(UniValue::VOBJ);
+    if (!key.extfvk().empty()) {
+        obj.pushKV("extfvk", "");
+    }
+    if (!key.masterfingerprint().empty()) {
+        obj.pushKV("masterFingerprint", StrToUint256(key.masterfingerprint()).GetHex());
+    }
+    if (key.derivationpath_size() > 0) {
+        std::vector<uint32_t> path;
+        for (auto i = 0; i < key.derivationpath_size(); i++) {
+            path.push_back(key.derivationpath(i));
+        }
+        obj.pushKV("derivationPath", WriteHDKeypath(path));
+    }
+    return obj;
+}
+
+UniValue decodepczt(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "decodepczt\n"
+            "\nReturns a JSON object representing the serialized, base64-encoded Partially Created Transaction.\n"
+            "\nArguments:\n"
+            "1. \"pczt\"    (string, required) The base64 string of the PCZT)\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"global\" : {               (json object)\n"
+            "    \"version\" : n,          (numeric) The version\n"
+            "    \"versiongroupid\": \"hex\"   (string, optional) The version group id (Overwintered txs)\n"
+            "    \"locktime\" : ttt,       (numeric) The lock time\n"
+            "    \"expiryheight\" : n,     (numeric, optional) Last valid block height for mining transaction (Overwintered txs)\n"
+            "    \"valueBalance\" : ttt,   (numeric) The value moving into or out of the Sapling shielded pool\n"
+            "    \"saplingAnchor\" : \"hex\",  (string) the anchor\n"
+            "    \"bsk\" : \"hex\",            (string) the signing key for bindingSig\n"
+            "    \"cvSum\" : \"hex\",          (string) current sum of the commitment values\n"
+            "  },\n"
+            "  \"spends\" : [               (array of json objects)\n"
+            "     {\n"
+            "       \"cv\" : \"hex\",         (string)\n"
+            "       \"nullifier\" : \"hex\",  (string)\n"
+            "       \"rk\" : \"hex\",         (string)\n"
+            "       \"proof\" : \"hex\",      (string)\n"
+            "       \"spendAuthSig\" : \"hex\",  (string)\n"
+            "       \"value\" : ttt,        (numeric) The value of the input\n"
+            "       \"rcv\" : \"hex\",        (string)\n"
+            "     }\n"
+            "     ,...\n"
+            "  ],\n"
+            "  \"outputs\" : [           (array of json objects)\n"
+            "     {\n"
+            "       \"cv\" : \"hex\",         (string)\n"
+            "       \"cmu\" : \"hex\",        (string)\n"
+            "       \"ephemeralKey\" : \"hex\",  (string)\n"
+            "       \"encCiphertext\" : \"hex\", (string)\n"
+            "       \"outCiphertext\" : \"hex\", (string)\n"
+            "       \"proof\" : \"hex\",      (string)\n"
+            "       \"value\" : ttt,        (numeric) The value of the input\n"
+            "       \"rcv\" : \"hex\",        (string)\n"
+            "       }\n"
+            "     }\n"
+            "     ,...\n"
+            "  ],\n"
+            "}\n"
+            "\nExamples:\n"
+            "\nDecode a PCZT\n"
+            + HelpExampleCli("decodepczt", "EgsIBBWFIC+JIIqEGg==") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("decodepczt", "\"EgsIBBWFIC+JIIqEGg==\"")
+        );
+
+    LOCK(cs_main);
+
+    Pczt pczt;
+    std::string error;
+    if (!pczt.Parse(params[0].get_str(), error)) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
+    }
+
+    UniValue result(UniValue::VOBJ);
+
+    // Global data
+    auto global = pczt.Data().global();
+    UniValue jglobal(UniValue::VOBJ);
+    jglobal.pushKV("version", static_cast<int64_t>(global.version()));
+    jglobal.pushKV("versiongroupid", static_cast<int64_t>(global.versiongroupid()));
+    jglobal.pushKV("locktime", static_cast<int64_t>(global.locktime()));
+    jglobal.pushKV("expiryheight", static_cast<int64_t>(global.expiryheight()));
+    jglobal.pushKV("valueBalance", static_cast<int64_t>(global.valuebalance()));
+    if (!global.saplinganchor().empty()) {
+        jglobal.pushKV("saplingAnchor", StrToUint256(global.saplinganchor()).GetHex());
+    }
+    if (!global.bsk().empty()) {
+        jglobal.pushKV("bsk", StrToUint256(global.bsk()).GetHex());
+    }
+    if (!global.cvsum().empty()) {
+        jglobal.pushKV("cvSum", StrToUint256(global.cvsum()).GetHex());
+    }
+    result.pushKV("global", jglobal);
+
+    // Spends
+    UniValue spends(UniValue::VARR);
+    for (auto spend : pczt.Data().spends()) {
+        UniValue obj(UniValue::VOBJ);
+
+        // Transaction data
+        if (!spend.cv().empty()) {
+            obj.pushKV("cv", StrToUint256(spend.cv()).GetHex());
+        }
+        if (!spend.nf().empty()) {
+            obj.pushKV("nullifier", StrToUint256(spend.nf()).GetHex());
+        }
+        if (!spend.rk().empty()) {
+            obj.pushKV("rk", StrToUint256(spend.rk()).GetHex());
+        }
+        if (!spend.zkproof().empty()) {
+            obj.pushKV("proof", HexStr(spend.zkproof()));
+        }
+        if (!spend.spendauthsig().empty()) {
+            obj.pushKV("spendAuthSig", HexStr(spend.spendauthsig()));
+        }
+
+        // Signing data
+        if (!spend.alpha().empty()) {
+            obj.pushKV("alpha", StrToUint256(spend.alpha()).GetHex());
+        }
+
+        // Value data
+        obj.pushKV("value", static_cast<int64_t>(spend.value()));
+        if (!spend.rcv().empty()) {
+            obj.pushKV("rcv", StrToUint256(spend.rcv()).GetHex());
+        }
+
+        // Key data
+        obj.pushKV("key", Zip32KeyToJSON(spend.key()));
+
+        spends.push_back(obj);
+    }
+    result.pushKV("spends", spends);
+
+    // Outputs
+    UniValue outputs(UniValue::VARR);
+    for (auto output : pczt.Data().outputs()) {
+        UniValue obj(UniValue::VOBJ);
+
+        // Transaction data
+        if (!output.cv().empty()) {
+            obj.pushKV("cv", StrToUint256(output.cv()).GetHex());
+        }
+        if (!output.cmu().empty()) {
+            obj.pushKV("cmu", StrToUint256(output.cmu()).GetHex());
+        }
+        if (!output.epk().empty()) {
+            obj.pushKV("ephemeralKey", StrToUint256(output.epk()).GetHex());
+        }
+        if (!output.encciphertext().empty()) {
+            obj.pushKV("encCiphertext", HexStr(output.encciphertext()));
+        }
+        if (!output.outciphertext().empty()) {
+            obj.pushKV("outCiphertext", HexStr(output.outciphertext()));
+        }
+        if (!output.zkproof().empty()) {
+            obj.pushKV("proof", HexStr(output.zkproof()));
+        }
+
+        // Value data
+        obj.pushKV("value", static_cast<int64_t>(output.value()));
+        if (!output.rcv().empty()) {
+            obj.pushKV("rcv", StrToUint256(output.rcv()).GetHex());
+        }
+
+        // Key data
+        obj.pushKV("key", Zip32KeyToJSON(output.key()));
+
+        outputs.push_back(obj);
+    }
+    result.pushKV("outputs", outputs);
+
+    return result;
+}
+
+UniValue finalizepczt(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "finalizepczt\n"
+            "\nFinalize a Partially Created Transaction. If the transaction is fully-signed,\n"
+            "it will produce a network-serialized transaction which can be broadcast with\n"
+            "sendrawtransaction.\n"
+            "\nArguments:\n"
+            "1. \"pczt\"    (string, required) The base64 string of the PCZT)\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"hex\": \"value\",          (string) The hex-encoded network transaction if extracted\n"
+            "  \"complete\": true|false,  (boolean) If the transaction has a complete set of signatures\n"
+            "}\n"
+            "\nExamples:\n"
+            "\nFinalize a PCZT\n"
+            + HelpExampleCli("finalizepczt", "EgsIBBWFIC+JIIqEGg==") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("finalizepczt", "\"EgsIBBWFIC+JIIqEGg==\"")
+        );
+
+    LOCK(cs_main);
+
+    Pczt pczt;
+    std::string error;
+    if (!pczt.Parse(params[0].get_str(), error)) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
+    }
+
+    UniValue result(UniValue::VOBJ);
+
+    try {
+        auto tx = pczt.Finalize(chainActive.Height(), Params().GetConsensus());
+        result.pushKV("hex", EncodeHexTx(tx));
+        result.pushKV("complete", true);
+    } catch (...) {
+        result.pushKV("complete", false);
+    }
+
+    return result;
+}
+
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         okSafeMode
   //  --------------------- ------------------------  -----------------------  ----------
@@ -1102,6 +1352,9 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    "decodescript",           &decodescript,           true  },
     { "rawtransactions",    "sendrawtransaction",     &sendrawtransaction,     false },
     { "rawtransactions",    "signrawtransaction",     &signrawtransaction,     false }, /* uses wallet if enabled */
+    { "rawtransactions",    "createpczt",             &createpczt,             true  },
+    { "rawtransactions",    "decodepczt",             &decodepczt,             true  },
+    { "rawtransactions",    "finalizepczt",           &finalizepczt,           true  },
 
     { "blockchain",         "gettxoutproof",          &gettxoutproof,          true  },
     { "blockchain",         "verifytxoutproof",       &verifytxoutproof,       true  },
