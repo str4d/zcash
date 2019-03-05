@@ -206,6 +206,7 @@ BITCOIN_CORE_H = \
   net.h \
   netbase.h \
   noui.h \
+  pczt.h \
   policy/fees.h \
   policy/policy.h \
   pow.h \
@@ -309,6 +310,7 @@ libbitcoin_server_a_SOURCES = \
   net.cpp \
   noui.cpp \
   pczt.proto \
+  pczt.cpp \
   policy/fees.cpp \
   policy/policy.cpp \
   pow.cpp \
