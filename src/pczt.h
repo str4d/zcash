@@ -9,6 +9,14 @@
 #include <pczt.pb.h>
 #include <primitives/transaction.h>
 
+enum class PcztError {
+    OK, //!< No error
+    PCZT_MISMATCH,
+    INVALID_PCZT,
+};
+
+std::string PcztErrorString(const PcztError err);
+
 uint256 StrToUint256(const std::string& str);
 
 class Pczt
@@ -27,6 +35,8 @@ public:
 
     bool Parse(const std::string& encoded, std::string& error);
     std::string Serialize();
+
+    bool Merge(Pczt& other);
 
     const pczt::PartiallyCreatedTransaction& Data()
     {

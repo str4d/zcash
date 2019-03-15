@@ -12,6 +12,19 @@
 
 using namespace pczt;
 
+std::string PcztErrorString(const PcztError err)
+{
+    switch (err) {
+        case PcztError::OK:
+            return "No error";
+        case PcztError::PCZT_MISMATCH:
+            return "PCZTs do not match";
+        case PcztError::INVALID_PCZT:
+            return "Invalid PCZT";
+    }
+    assert(false);
+}
+
 uint256 StrToUint256(const std::string& str)
 {
     CDataStream ss(str.data(), str.data() + str.length(), SER_NETWORK, PROTOCOL_VERSION);
@@ -139,6 +152,25 @@ void Pczt::SetSaplingAnchor(uint256 anchor)
     }
 
     this->inner.mutable_global()->set_saplinganchor(anchor.begin(), anchor.size());
+}
+
+bool Pczt::Merge(Pczt& other)
+{
+    // Check that the PCZTs match
+    auto a_global = this->inner.global();
+    auto b_global = other.inner.global();
+    if (a_global.version() != b_global.version() ||
+        a_global.versiongroupid() != b_global.versiongroupid() ||
+        a_global.locktime() != b_global.locktime() ||
+        a_global.expiryheight() != b_global.expiryheight() ||
+        a_global.saplinganchor() != b_global.saplinganchor()) {
+        return false;
+    }
+
+    // Merge the PCZTs (overwriting entries in this PCZT with those in the other).
+    this->inner.CheckTypeAndMergeFrom(other.inner);
+
+    return true;
 }
 
 void Pczt::AddSaplingSpend(
@@ -346,4 +378,17 @@ CTransaction Pczt::Finalize(int nHeight, const Consensus::Params& params)
     librustzcash_sapling_proving_ctx_free(ctx);
 
     return CTransaction(mtx);
+}
+
+PcztError CombinePczts(Pczt& combined, const std::vector<Pczt>& pczts)
+{
+    combined = pczts[0];
+
+    for (auto it = std::next(pczts.begin()); it != pczts.end(); it++) {
+        if (!combined.Merge(*it)) {
+            return PcztError::PCZT_MISMATCH;
+        }
+    }
+
+    return PcztError::OK;
 }

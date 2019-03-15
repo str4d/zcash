@@ -1300,6 +1300,52 @@ UniValue decodepczt(const UniValue& params, bool fHelp)
     return result;
 }
 
+UniValue combinepczt(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "combinepczt\n"
+            "\nCombine multiple Partially Created Transactions into one PCZT.\n"
+            "\nArguments:\n"
+            "1. \"pczts\"       (string) A json array of PCZTs to combine\n"
+            "    [\n"
+            "      \"pczt\"     (string) The base64 string of a PCZT\n"
+            "      ,...\n"
+            "    ]\n"
+            "\nResult:\n"
+            "\"pczt\" (string) The combined PCZT, as a base64-encoded string\n"
+            "\nExamples:\n"
+            "\nFinalize a PCZT\n"
+            + HelpExampleCli("combinepczt", "[\"EgsIBBWFIC+JIIqEGg==\", \"EgsIBBWFIC+JIIqEGg==\"]") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("combinepczt", "[\"EgsIBBWFIC+JIIqEGg==\", \"EgsIBBWFIC+JIIqEGg==\"]")
+        );
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VARR));
+
+    std::vector<Pczt> pczts;
+    auto encoded = params[0].get_array();
+    if (encoded.empty()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "pczts array cannot be empty");
+    }
+    for (int i = 0; i < encoded.size(); i++) {
+        Pczt pczt;
+        std::string error;
+        if (!pczt.Parse(encoded[i].get_str(), error)) {
+            throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
+        }
+        pczts.push_back(pczt);
+    }
+
+    Pczt combined;
+    const auto error = CombinedPczts(combined, pczts);
+    if (error != TransactionError::OK) {
+        throw JSONRPCError(RPC_WALLET_ERROR, TransactionErrorString(err));
+    }
+
+    return EncodeBase64(combined.Serialize());
+}
+
 UniValue finalizepczt(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
