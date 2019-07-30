@@ -1,9 +1,9 @@
-package=crate_fuchsia_zircon
-$(package)_crate_name=fuchsia-zircon
-$(package)_version=0.3.3
+package=crate_ppv_lite86
+$(package)_crate_name=ppv-lite86
+$(package)_version=0.2.5
 $(package)_download_path=https://static.crates.io/crates/$($(package)_crate_name)
 $(package)_file_name=$($(package)_crate_name)-$($(package)_version).crate
-$(package)_sha256_hash=2e9763c69ebaae630ba35f74888db465e49e259ba1bc0eda7d06f4a067615d82
+$(package)_sha256_hash=e3cbf9f658cdb5000fcf6f362b8ea2ba154b9f146a61c7a20d647034c6b6561b
 $(package)_crate_versioned_name=$($(package)_crate_name)
 
 define $(package)_preprocess_cmds

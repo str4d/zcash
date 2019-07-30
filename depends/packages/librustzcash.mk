@@ -1,12 +1,12 @@
 package=librustzcash
 $(package)_version=0.1
-$(package)_download_path=https://github.com/zcash/$(package)/archive/
+$(package)_download_path=https://github.com/str4d/$(package)/archive/
 $(package)_file_name=$(package)-$($(package)_git_commit).tar.gz
 $(package)_download_file=$($(package)_git_commit).tar.gz
-$(package)_sha256_hash=9909ec59fa7a411c2071d6237b3363a0bc6e5e42358505cf64b7da0f58a7ff5a
-$(package)_git_commit=06da3b9ac8f278e5d4ae13088cf0a4c03d2c13f5
+$(package)_sha256_hash=47a662d9db65f38e182b2a89a2fe18e82086716879e9559ca5a96b65461ecc2f
+$(package)_git_commit=35844855164cc4be78d130ce0f1e801086009f93
 $(package)_dependencies=rust $(rust_crates)
-$(package)_patches=cargo.config 0001-Start-using-cargo-clippy-for-CI.patch remove-dev-dependencies.diff
+$(package)_patches=cargo.config remove-dev-dependencies.diff
 
 $(package)_rust_target=$(if $(rust_rust_target_$(canonical_host)),$(rust_rust_target_$(canonical_host)),$(canonical_host))
 
@@ -26,7 +26,6 @@ endif
 endef
 
 define $(package)_preprocess_cmds
-  patch -p1 -d pairing < $($(package)_patch_dir)/0001-Start-using-cargo-clippy-for-CI.patch && \
   patch -p1 < $($(package)_patch_dir)/remove-dev-dependencies.diff && \
   mkdir .cargo && \
   cat $($(package)_patch_dir)/cargo.config | sed 's|CRATE_REGISTRY|$(host_prefix)/$(CRATE_REGISTRY)|' > .cargo/config

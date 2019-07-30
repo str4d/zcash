@@ -1,9 +1,9 @@
-package=crate_aes
-$(package)_crate_name=aes
-$(package)_version=0.3.2
+package=crate_blake2s_simd
+$(package)_crate_name=blake2s_simd
+$(package)_version=0.5.6
 $(package)_download_path=https://static.crates.io/crates/$($(package)_crate_name)
 $(package)_file_name=$($(package)_crate_name)-$($(package)_version).crate
-$(package)_sha256_hash=54eb1d8fe354e5fc611daf4f2ea97dd45a765f4f1e4512306ec183ae2e8f20c9
+$(package)_sha256_hash=3a84d2614b18a5367d357331a90fd533d5ceb1e86abc319320df2104ab744c2a
 $(package)_crate_versioned_name=$($(package)_crate_name)
 
 define $(package)_preprocess_cmds
