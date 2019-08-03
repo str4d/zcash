@@ -404,7 +404,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             "verifymessage \"zcashaddress\" \"signature\" \"message\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"zcashaddress\"    (string, required) The Zcash address to use for the signature.\n"
+            "1. \"zcashaddress\"    (string, required) The transparent or Sapling address to use for the signature.\n"
             "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
             "3. \"message\"         (string, required) The message that was signed.\n"
             "\nResult:\n"
@@ -426,6 +426,23 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
     string strSign     = params[1].get_str();
     string strMessage  = params[2].get_str();
 
+    bool fInvalid = false;
+    vector<unsigned char> vchSig = DecodeBase64(strSign.c_str(), &fInvalid);
+
+    if (fInvalid) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
+    }
+
+    auto res = DecodePaymentAddress(strAddress);
+    if (IsValidPaymentAddress(res)) {
+        if (boost::get<libzcash::SaplingPaymentAddress>(&res) == nullptr) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
+        }
+        auto zaddr = boost::get<libzcash::SaplingPaymentAddress>(res);
+
+        return zaddr.VerifyMessage(Params().BIP44CoinType(), strMessage, vchSig);
+    }
+
     CTxDestination destination = DecodeDestination(strAddress);
     if (!IsValidDestination(destination)) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
@@ -435,12 +452,6 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
     if (!keyID) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
     }
-
-    bool fInvalid = false;
-    vector<unsigned char> vchSig = DecodeBase64(strSign.c_str(), &fInvalid);
-
-    if (fInvalid)
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
 
     CHashWriter ss(SER_GETHASH, 0);
     ss << strMessageMagic;

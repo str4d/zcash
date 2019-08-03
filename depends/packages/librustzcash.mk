@@ -3,8 +3,8 @@ $(package)_version=0.1
 $(package)_download_path=https://github.com/str4d/$(package)/archive/
 $(package)_file_name=$(package)-$($(package)_git_commit).tar.gz
 $(package)_download_file=$($(package)_git_commit).tar.gz
-$(package)_sha256_hash=47a662d9db65f38e182b2a89a2fe18e82086716879e9559ca5a96b65461ecc2f
-$(package)_git_commit=35844855164cc4be78d130ce0f1e801086009f93
+$(package)_sha256_hash=7935964752d564b412fa72aeb5e55268348f761eeb3c219589a11d3db38a8efc
+$(package)_git_commit=8caaac01dbfa0b9207393a5f4683fc87cb06daa9
 $(package)_dependencies=rust $(rust_crates)
 $(package)_patches=cargo.config remove-dev-dependencies.diff
 

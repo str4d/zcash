@@ -163,6 +163,30 @@ libzcash::SaplingPaymentAddress SaplingExtendedSpendingKey::DefaultAddress() con
     return ToXFVK().DefaultAddress();
 }
 
+std::array<unsigned char, ZIP304SignatureSize> SaplingExtendedSpendingKey::SignMessage(
+    uint32_t coinType,
+    SaplingPaymentAddress address,
+    std::string message) const
+{
+    CDataStream ss_xsk(SER_NETWORK, PROTOCOL_VERSION);
+    ss_xsk << *this;
+    CSerializeData xsk_bytes(ss_xsk.begin(), ss_xsk.end());
+
+    CDataStream ss_pa(SER_NETWORK, PROTOCOL_VERSION);
+    ss_pa << address;
+    CSerializeData pa_bytes(ss_pa.begin(), ss_pa.end());
+
+    std::array<unsigned char, ZIP304SignatureSize> signature;
+    librustzcash_zip304_signmessage(
+        reinterpret_cast<unsigned char*>(xsk_bytes.data()),
+        reinterpret_cast<unsigned char*>(pa_bytes.data()),
+        coinType,
+        message.c_str(),
+        signature.data());
+
+    return signature;
+}
+
 }
 
 bool IsValidSpendingKey(const libzcash::SpendingKey& zkey) {

@@ -525,11 +525,11 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() != 2)
         throw runtime_error(
-            "signmessage \"t-addr\" \"message\"\n"
-            "\nSign a message with the private key of a t-addr"
+            "signmessage \"zcashaddress\" \"message\"\n"
+            "\nSign a message with the private key of a t-addr or Sapling address"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
-            "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
+            "1. \"zcashaddress\"  (string, required) The transparent or Sapling address to use for the private key.\n"
             "2. \"message\"         (string, required) The message to create a signature of.\n"
             "\nResult:\n"
             "\"signature\"          (string) The signature of the message encoded in base 64\n"
@@ -550,6 +550,22 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
     string strAddress = params[0].get_str();
     string strMessage = params[1].get_str();
+
+    auto res = DecodePaymentAddress(strAddress);
+    if (IsValidPaymentAddress(res)) {
+        if (boost::get<libzcash::SaplingPaymentAddress>(&res) == nullptr) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
+        }
+        auto zaddr = boost::get<libzcash::SaplingPaymentAddress>(res);
+
+        libzcash::SaplingExtendedSpendingKey extsk;
+        if (!pwalletMain->GetSaplingExtendedSpendingKey(zaddr, extsk)) {
+             throw JSONRPCError(RPC_WALLET_ERROR, "Sapling spending key not available");
+        }
+
+        auto sig = extsk.SignMessage(Params().BIP44CoinType(), zaddr, strMessage);
+        return EncodeBase64(sig.data(), sig.size());
+    }
 
     CTxDestination dest = DecodeDestination(strAddress);
     if (!IsValidDestination(dest)) {

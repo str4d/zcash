@@ -24,6 +24,8 @@ const size_t SerializedSaplingFullViewingKeySize = 96;
 const size_t SerializedSaplingExpandedSpendingKeySize = 96;
 const size_t SerializedSaplingSpendingKeySize = 32;
 
+const size_t ZIP304SignatureSize = 320;
+
 typedef std::array<unsigned char, ZC_DIVERSIFIER_SIZE> diversifier_t;
 
 class SproutPaymentAddress {
@@ -120,6 +122,9 @@ public:
     
     //! Get the 256-bit SHA256d hash of this payment address.
     uint256 GetHash() const;
+
+    bool VerifyMessage(
+        uint32_t coinType, std::string message, std::vector<unsigned char> signature) const;
 
     friend inline bool operator==(const SaplingPaymentAddress& a, const SaplingPaymentAddress& b) {
         return a.d == b.d && a.pk_d == b.pk_d;

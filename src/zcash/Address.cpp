@@ -48,6 +48,26 @@ uint256 SaplingPaymentAddress::GetHash() const {
     return Hash(ss.begin(), ss.end());
 }
 
+bool SaplingPaymentAddress::VerifyMessage(
+    uint32_t coinType,
+    std::string message,
+    std::vector<unsigned char> signature) const
+{
+    if (signature.size() != ZIP304SignatureSize) {
+        return false;
+    }
+
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << *this;
+    CSerializeData pa_bytes(ss.begin(), ss.end());
+
+    return librustzcash_zip304_verifymessage(
+        reinterpret_cast<unsigned char*>(pa_bytes.data()),
+        coinType,
+        message.c_str(),
+        signature.data());
+}
+
 SaplingFullViewingKey SaplingExpandedSpendingKey::full_viewing_key() const {
     uint256 ak;
     uint256 nk;

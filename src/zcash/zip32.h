@@ -123,6 +123,9 @@ struct SaplingExtendedSpendingKey {
 
     libzcash::SaplingPaymentAddress DefaultAddress() const;
 
+    std::array<unsigned char, ZIP304SignatureSize> SignMessage(
+        uint32_t coinType, SaplingPaymentAddress address, std::string message) const;
+
     friend bool operator==(const SaplingExtendedSpendingKey& a, const SaplingExtendedSpendingKey& b)
     {
         return a.depth == b.depth &&
