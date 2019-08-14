@@ -45,14 +45,15 @@ class SaplingNote : public BaseNote {
 public:
     diversifier_t d;
     uint256 pk_d;
+    uint32_t assetType;
     uint256 r;
 
-    SaplingNote(diversifier_t d, uint256 pk_d, uint64_t value, uint256 r)
-            : BaseNote(value), d(d), pk_d(pk_d), r(r) {}
+    SaplingNote(diversifier_t d, uint256 pk_d, uint32_t assetType, uint64_t value, uint256 r)
+            : BaseNote(value), d(d), pk_d(pk_d), assetType(assetType), r(r) {}
 
     SaplingNote() {};
 
-    SaplingNote(const SaplingPaymentAddress &address, uint64_t value);
+    SaplingNote(const SaplingPaymentAddress &address, uint32_t assetType, uint64_t value);
 
     virtual ~SaplingNote() {};
 
@@ -121,6 +122,7 @@ typedef std::pair<SaplingEncCiphertext, SaplingNoteEncryption> SaplingNotePlaint
 class SaplingNotePlaintext : public BaseNotePlaintext {
 public:
     diversifier_t d;
+    uint32_t assetType;
     uint256 rcm;
 
     SaplingNotePlaintext() {}
@@ -160,6 +162,7 @@ public:
         READWRITE(d);           // 11 bytes
         READWRITE(value_);      // 8 bytes
         READWRITE(rcm);         // 32 bytes
+        READWRITE(assetType);   // 4 bytes
         READWRITE(memo_);       // 512 bytes
     }
 

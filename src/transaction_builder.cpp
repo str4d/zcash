@@ -100,8 +100,12 @@ void TransactionBuilder::AddSaplingSpend(
         throw JSONRPCError(RPC_WALLET_ERROR, "Anchor does not match previously-added Sapling spends.");
     }
 
-    spends.emplace_back(expsk, note, anchor, witness);
-    mtx.valueBalance += note.value();
+    if (note.assetType == ASSET_ZCASH) {
+        spends.emplace_back(expsk, note, anchor, witness);
+        mtx.valueBalance += note.value();
+    } else {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Assets not supported yet");
+    }
 }
 
 void TransactionBuilder::AddSaplingOutput(
@@ -115,7 +119,7 @@ void TransactionBuilder::AddSaplingOutput(
         throw std::runtime_error("TransactionBuilder cannot add Sapling output to pre-Sapling transaction");
     }
 
-    auto note = libzcash::SaplingNote(to, value);
+    auto note = libzcash::SaplingNote(to, ASSET_ZCASH, value);
     outputs.emplace_back(ovk, note, memo);
     mtx.valueBalance -= value;
 }
@@ -285,6 +289,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 spend.note.d.data(),
                 spend.note.r.begin(),
                 spend.alpha.begin(),
+                spend.note.assetType,
                 spend.note.value(),
                 spend.anchor.begin(),
                 witness.data(),
@@ -325,6 +330,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 output.note.d.data(),
                 output.note.pk_d.begin(),
                 output.note.r.begin(),
+                output.note.assetType,
                 output.note.value(),
                 odesc.cv.begin(),
                 odesc.zkproof.begin())) {
@@ -391,6 +397,7 @@ TransactionBuilderResult TransactionBuilder::Build()
     }
     librustzcash_sapling_binding_sig(
         ctx,
+        ASSET_ZCASH,
         mtx.valueBalance,
         dataToBeSigned.begin(),
         mtx.bindingSig.data());

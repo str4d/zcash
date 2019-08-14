@@ -34,7 +34,7 @@ TEST(noteencryption, NotePlaintext)
         memo[i] = (unsigned char) i;
     }
 
-    SaplingNote note(addr, 39393);
+    SaplingNote note(addr, ASSET_ZCASH, 39393);
     auto cmu_opt = note.cm();
     if (!cmu_opt) {
         FAIL();

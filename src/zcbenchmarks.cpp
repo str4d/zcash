@@ -612,7 +612,7 @@ double benchmark_create_sapling_spend()
     auto sk = libzcash::SaplingSpendingKey::random();
     auto expsk = sk.expanded_spending_key();
     auto address = sk.default_address();
-    SaplingNote note(address, GetRand(MAX_MONEY));
+    SaplingNote note(address, ASSET_ZCASH, GetRand(MAX_MONEY));
     SaplingMerkleTree tree;
     auto maybe_cm = note.cm();
     tree.append(maybe_cm.get());
@@ -643,6 +643,7 @@ double benchmark_create_sapling_spend()
         note.d.data(),
         note.r.begin(),
         alpha.begin(),
+        ASSET_ZCASH,
         note.value(),
         anchor.begin(),
         witnessChars.data(),
@@ -664,7 +665,7 @@ double benchmark_create_sapling_output()
     auto address = sk.default_address();
 
     std::array<unsigned char, ZC_MEMO_SIZE> memo;
-    SaplingNote note(address, GetRand(MAX_MONEY));
+    SaplingNote note(address, ASSET_ZCASH, GetRand(MAX_MONEY));
 
     libzcash::SaplingNotePlaintext notePlaintext(note, memo);
     auto res = notePlaintext.encrypt(note.pk_d);
@@ -687,6 +688,7 @@ double benchmark_create_sapling_output()
         note.d.data(),
         note.pk_d.begin(),
         note.r.begin(),
+        ASSET_ZCASH,
         note.value(),
         odesc.cv.begin(),
         odesc.zkproof.begin());

@@ -44,7 +44,7 @@ TEST(SaplingNote, TestVectors)
     uint256 nf(v_nf);
 
     // Test commitment
-    SaplingNote note = SaplingNote(diversifier, pk_d, v, r);
+    SaplingNote note = SaplingNote(diversifier, pk_d, ASSET_ZCASH, v, r);
     ASSERT_EQ(note.cm().get(), cm);
 
     // Test nullifier
@@ -57,8 +57,8 @@ TEST(SaplingNote, Random)
 {
     // Test creating random notes using the same spending key
     auto address = SaplingSpendingKey::random().default_address();
-    SaplingNote note1(address, GetRand(MAX_MONEY));
-    SaplingNote note2(address, GetRand(MAX_MONEY));
+    SaplingNote note1(address, ASSET_ZCASH, GetRand(MAX_MONEY));
+    SaplingNote note2(address, ASSET_ZCASH, GetRand(MAX_MONEY));
 
     ASSERT_EQ(note1.d, note2.d);
     ASSERT_EQ(note1.pk_d, note2.pk_d);
@@ -66,7 +66,7 @@ TEST(SaplingNote, Random)
     ASSERT_NE(note1.r, note2.r);
 
     // Test diversifier and pk_d are not the same for different spending keys
-    SaplingNote note3(SaplingSpendingKey::random().default_address(), GetRand(MAX_MONEY));
+    SaplingNote note3(SaplingSpendingKey::random().default_address(), ASSET_ZCASH, GetRand(MAX_MONEY));
     ASSERT_NE(note1.d, note3.d);
     ASSERT_NE(note1.pk_d, note3.pk_d);
 }

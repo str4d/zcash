@@ -41,7 +41,11 @@ uint256 SproutNote::nullifier(const SproutSpendingKey& a_sk) const {
 }
 
 // Construct and populate Sapling note for a given payment address and value.
-SaplingNote::SaplingNote(const SaplingPaymentAddress& address, const uint64_t value) : BaseNote(value) {
+SaplingNote::SaplingNote(
+    const SaplingPaymentAddress& address,
+    const uint32_t assetType,
+    const uint64_t value) : BaseNote(value), assetType(assetType)
+{
     d = address.d;
     pk_d = address.pk_d;
     librustzcash_sapling_generate_r(r.begin());
@@ -53,6 +57,7 @@ boost::optional<uint256> SaplingNote::cm() const {
     if (!librustzcash_sapling_compute_cm(
             d.data(),
             pk_d.begin(),
+            assetType,
             value(),
             r.begin(),
             result.begin()
@@ -74,6 +79,7 @@ boost::optional<uint256> SaplingNote::nullifier(const SaplingFullViewingKey& vk,
     if (!librustzcash_sapling_compute_nf(
             d.data(),
             pk_d.begin(),
+            assetType,
             value(),
             r.begin(),
             ak.begin(),
@@ -145,6 +151,7 @@ SaplingNotePlaintext::SaplingNotePlaintext(
     std::array<unsigned char, ZC_MEMO_SIZE> memo) : BaseNotePlaintext(note, memo)
 {
     d = note.d;
+    assetType = note.assetType;
     rcm = note.r;
 }
 
@@ -153,7 +160,7 @@ boost::optional<SaplingNote> SaplingNotePlaintext::note(const SaplingIncomingVie
 {
     auto addr = ivk.address(d);
     if (addr) {
-        return SaplingNote(d, addr.get().pk_d, value_, rcm);
+        return SaplingNote(d, addr.get().pk_d, assetType, value_, rcm);
     } else {
         return boost::none;
     }
@@ -214,6 +221,7 @@ boost::optional<SaplingNotePlaintext> SaplingNotePlaintext::decrypt(
     if (!librustzcash_sapling_compute_cm(
         ret.d.data(),
         pk_d.begin(),
+        ret.assetType,
         ret.value(),
         ret.rcm.begin(),
         cmu_expected.begin()
@@ -253,6 +261,7 @@ boost::optional<SaplingNotePlaintext> SaplingNotePlaintext::decrypt(
     if (!librustzcash_sapling_compute_cm(
         ret.d.data(),
         pk_d.begin(),
+        ret.assetType,
         ret.value(),
         ret.rcm.begin(),
         cmu_expected.begin()

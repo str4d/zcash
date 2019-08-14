@@ -1051,6 +1051,7 @@ bool ContextualCheckTransaction(
 
         if (!librustzcash_sapling_final_check(
             ctx,
+            ASSET_ZCASH,
             tx.valueBalance,
             tx.bindingSig.begin(),
             dataToBeSigned.begin()
