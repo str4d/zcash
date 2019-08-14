@@ -62,6 +62,9 @@ TransactionBuilder::TransactionBuilder(
     cs_coinsView(cs_coinsView)
 {
     mtx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
+
+    // Zcash will always be involved
+    assetBalances[ASSET_ZCASH] = 0;
 }
 
 // This exception is thrown in certain scenarios when building JoinSplits fails.
@@ -96,21 +99,20 @@ void TransactionBuilder::AddSaplingSpend(
     }
 
     // Consistency check: all anchors must equal the first one
-    if (spends.size() > 0 && spends[0].anchor != anchor) {
+    if (this->anchor.IsNull()) {
+        this->anchor = anchor;
+    } else if(this->anchor != anchor) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Anchor does not match previously-added Sapling spends.");
     }
 
-    if (note.assetType == ASSET_ZCASH) {
-        spends.emplace_back(expsk, note, anchor, witness);
-        mtx.valueBalance += note.value();
-    } else {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Assets not supported yet");
-    }
+    assetSpends[note.assetType].emplace_back(expsk, note, anchor, witness);
+    assetBalances[note.assetType] += note.value();
 }
 
 void TransactionBuilder::AddSaplingOutput(
     uint256 ovk,
     libzcash::SaplingPaymentAddress to,
+    uint32_t assetType,
     CAmount value,
     std::array<unsigned char, ZC_MEMO_SIZE> memo)
 {
@@ -119,9 +121,9 @@ void TransactionBuilder::AddSaplingOutput(
         throw std::runtime_error("TransactionBuilder cannot add Sapling output to pre-Sapling transaction");
     }
 
-    auto note = libzcash::SaplingNote(to, ASSET_ZCASH, value);
-    outputs.emplace_back(ovk, note, memo);
-    mtx.valueBalance -= value;
+    auto note = libzcash::SaplingNote(to, assetType, value);
+    assetOutputs[assetType].emplace_back(ovk, note, memo);
+    assetBalances[note.assetType] -= value;
 }
 
 void TransactionBuilder::AddSproutInput(
@@ -183,6 +185,11 @@ void TransactionBuilder::SetFee(CAmount fee)
     this->fee = fee;
 }
 
+void TransactionBuilder::SetValueBalanceAssetType(uint32_t assetType)
+{
+    mtx.valueBalanceAssetType = assetType;
+}
+
 void TransactionBuilder::SendChangeTo(libzcash::SaplingPaymentAddress changeAddr, uint256 ovk)
 {
     saplingChangeAddr = std::make_pair(ovk, changeAddr);
@@ -214,51 +221,75 @@ TransactionBuilderResult TransactionBuilder::Build()
     // Consistency checks
     //
 
-    // Valid change
-    CAmount change = mtx.valueBalance - fee;
-    for (auto jsInput : jsInputs) {
-        change += jsInput.note.value();
-    }
-    for (auto jsOutput : jsOutputs) {
-        change -= jsOutput.value;
-    }
-    for (auto tIn : tIns) {
-        change += tIn.value;
-    }
-    for (auto tOut : mtx.vout) {
-        change -= tOut.nValue;
-    }
-    if (change < 0) {
-        return TransactionBuilderResult("Change cannot be negative");
-    }
+    for (auto asset : assetBalances) {
+        uint32_t assetType = asset.first;
+        bool isZcash = (assetType == ASSET_ZCASH);
 
-    //
-    // Change output
-    //
-
-    if (change > 0) {
-        // Send change to the specified change address. If no change address
-        // was set, send change to the first Sapling address given as input
-        // if any; otherwise the first Sprout address given as input.
-        // (A t-address can only be used as the change address if explicitly set.)
-        if (saplingChangeAddr) {
-            AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
-        } else if (sproutChangeAddr) {
-            AddSproutOutput(sproutChangeAddr.get(), change);
-        } else if (tChangeAddr) {
-            // tChangeAddr has already been validated.
-            AddTransparentOutput(tChangeAddr.value(), change);
-        } else if (!spends.empty()) {
-            auto fvk = spends[0].expsk.full_viewing_key();
-            auto note = spends[0].note;
-            libzcash::SaplingPaymentAddress changeAddr(note.d, note.pk_d);
-            AddSaplingOutput(fvk.ovk, changeAddr, change);
-        } else if (!jsInputs.empty()) {
-            auto changeAddr = jsInputs[0].key.address();
-            AddSproutOutput(changeAddr, change);
-        } else {
-            return TransactionBuilderResult("Could not determine change address");
+        // Valid change
+        CAmount change = assetBalances[assetType];
+        if (isZcash) {
+            change -= fee;
+            for (auto jsInput : jsInputs) {
+                change += jsInput.note.value();
+            }
+            for (auto jsOutput : jsOutputs) {
+                change -= jsOutput.value;
+            }
+            for (auto tIn : tIns) {
+                change += tIn.value;
+            }
+            for (auto tOut : mtx.vout) {
+                change -= tOut.nValue;
+            }
         }
+        if (change < 0) {
+            return TransactionBuilderResult(
+                strprintf("Change cannot be negative for asset type %d", assetType));
+        }
+
+        //
+        // Change output
+        //
+
+        if (change > 0) {
+            // Send change to the specified change address. If no change address
+            // was set, send change to the first Sapling address given as input
+            // if any; otherwise the first Sprout address given as input.
+            // (A t-address can only be used as the change address if explicitly set.)
+            if (saplingChangeAddr) {
+                AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, assetType, change);
+            } else if (isZcash && sproutChangeAddr) {
+                AddSproutOutput(sproutChangeAddr.get(), change);
+            } else if (isZcash && tChangeAddr) {
+                // tChangeAddr has already been validated.
+                AddTransparentOutput(tChangeAddr.value(), change);
+            } else if (!assetSpends[assetType].empty()) {
+                auto fvk = assetSpends[assetType][0].expsk.full_viewing_key();
+                auto note = assetSpends[assetType][0].note;
+                libzcash::SaplingPaymentAddress changeAddr(note.d, note.pk_d);
+                AddSaplingOutput(fvk.ovk, changeAddr, assetType, change);
+            } else if (isZcash && !jsInputs.empty()) {
+                auto changeAddr = jsInputs[0].key.address();
+                AddSproutOutput(changeAddr, change);
+            } else {
+                return TransactionBuilderResult(
+                    strprintf("Could not determine change address for asset type %d", assetType));
+            }
+        }
+
+        if (mtx.valueBalanceAssetType == assetType) {
+            mtx.valueBalance = assetBalances[assetType];
+        }
+    }
+
+    // Now that we've handled per-asset change, bundle all the asset types together.
+    std::vector<SpendDescriptionInfo> spends;
+    std::vector<OutputDescriptionInfo> outputs;
+    for (auto asset : assetSpends) {
+        spends.insert(spends.end(), asset.second.begin(), asset.second.end());
+    }
+    for (auto asset : assetOutputs) {
+        outputs.insert(outputs.end(), asset.second.begin(), asset.second.end());
     }
 
     //
@@ -397,7 +428,7 @@ TransactionBuilderResult TransactionBuilder::Build()
     }
     librustzcash_sapling_binding_sig(
         ctx,
-        ASSET_ZCASH,
+        mtx.valueBalanceAssetType,
         mtx.valueBalance,
         dataToBeSigned.begin(),
         mtx.bindingSig.data());

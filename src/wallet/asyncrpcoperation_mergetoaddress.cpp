@@ -353,7 +353,7 @@ bool AsyncRPCOperation_mergetoaddress::main_impl()
             if (!ovk) {
                 throw JSONRPCError(RPC_WALLET_ERROR, "Sending to a Sapling address requires an ovk.");
             }
-            builder_.AddSaplingOutput(ovk.get(), *saplingPaymentAddress, sendAmount, hexMemo);
+            builder_.AddSaplingOutput(ovk.get(), *saplingPaymentAddress, ASSET_ZCASH, sendAmount, hexMemo);
         }
 
         // Build the transaction

@@ -80,8 +80,10 @@ private:
     CMutableTransaction mtx;
     CAmount fee = 10000;
 
-    std::vector<SpendDescriptionInfo> spends;
-    std::vector<OutputDescriptionInfo> outputs;
+    uint256 anchor;
+    std::map<uint32_t, std::vector<SpendDescriptionInfo>> assetSpends;
+    std::map<uint32_t, std::vector<OutputDescriptionInfo>> assetOutputs;
+    std::map<uint32_t, CAmount> assetBalances;
     std::vector<libzcash::JSInput> jsInputs;
     std::vector<libzcash::JSOutput> jsOutputs;
     std::vector<TransparentInputInfo> tIns;
@@ -104,6 +106,8 @@ public:
 
     void SetFee(CAmount fee);
 
+    void SetValueBalanceAssetType(uint32_t assetType);
+
     // Throws if the anchor does not match the anchor used by
     // previously-added Sapling spends.
     void AddSaplingSpend(
@@ -115,6 +119,7 @@ public:
     void AddSaplingOutput(
         uint256 ovk,
         libzcash::SaplingPaymentAddress to,
+        uint32_t assetType,
         CAmount value,
         std::array<unsigned char, ZC_MEMO_SIZE> memo = {{0xF6}});
 

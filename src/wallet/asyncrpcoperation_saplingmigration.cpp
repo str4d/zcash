@@ -145,7 +145,7 @@ bool AsyncRPCOperation_saplingmigration::main_impl() {
         // The amount chosen *includes* the 0.0001 ZEC fee for this transaction, i.e.
         // the value of the Sapling output will be 0.0001 ZEC less.
         builder.SetFee(FEE);
-        builder.AddSaplingOutput(ovkForShieldingFromTaddr(seed), migrationDestAddress, amountToSend - FEE);
+        builder.AddSaplingOutput(ovkForShieldingFromTaddr(seed), migrationDestAddress, ASSET_ZCASH, amountToSend - FEE);
         CTransaction tx = builder.Build().GetTxOrThrow();
         if (isCancelled()) {
             LogPrint("zrpcunsafe", "%s: Canceled. Stopping.\n", getId());

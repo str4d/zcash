@@ -95,7 +95,7 @@ TEST(TransactionBuilder, TransparentToSapling)
     // 0.0005 t-ZEC in, 0.0004 z-ZEC out, 0.0001 t-ZEC fee
     auto builder = TransactionBuilder(consensusParams, 1, &keystore);
     builder.AddTransparentInput(COutPoint(), scriptPubKey, 50000);
-    builder.AddSaplingOutput(fvk_from.ovk, pk, 40000, {});
+    builder.AddSaplingOutput(fvk_from.ovk, pk, ASSET_ZCASH, 40000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
     EXPECT_EQ(tx.vin.size(), 1);
@@ -132,7 +132,7 @@ TEST(TransactionBuilder, SaplingToSapling) {
     // TODO: the following check can be split out in to another test
     ASSERT_THROW(builder.AddSaplingSpend(expsk, testNote.note, uint256(), testNote.tree.witness()), UniValue);
 
-    builder.AddSaplingOutput(fvk.ovk, pa, 25000, {});
+    builder.AddSaplingOutput(fvk.ovk, pa, ASSET_ZCASH, 25000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
     EXPECT_EQ(tx.vin.size(), 0);
@@ -223,7 +223,7 @@ TEST(TransactionBuilder, SproutToSproutAndSapling) {
     builder.AddSproutInput(sproutSk, sproutNote, sproutWitness);
     builder.AddSproutOutput(sproutAddr, 6000);
     builder.AddSproutOutput(sproutAddr, 4000);
-    builder.AddSaplingOutput(fvk.ovk, pa, 5000);
+    builder.AddSaplingOutput(fvk.ovk, pa, ASSET_ZCASH, 5000);
     auto tx = builder.Build().GetTxOrThrow();
 
     EXPECT_EQ(tx.vin.size(), 0);
@@ -312,7 +312,7 @@ TEST(TransactionBuilder, FailsWithNegativeChange)
     // Fail if there is only a Sapling output
     // 0.0005 z-ZEC out, 0.0001 t-ZEC fee
     auto builder = TransactionBuilder(consensusParams, 1);
-    builder.AddSaplingOutput(fvk.ovk, pa, 50000, {});
+    builder.AddSaplingOutput(fvk.ovk, pa, ASSET_ZCASH, 50000, {});
     EXPECT_EQ("Change cannot be negative", builder.Build().GetError());
 
     // Fail if there is only a transparent output
@@ -430,7 +430,7 @@ TEST(TransactionBuilder, SetFee)
     {
         auto builder = TransactionBuilder(consensusParams, 1);
         builder.AddSaplingSpend(expsk, testNote.note, testNote.tree.root(), testNote.tree.witness());
-        builder.AddSaplingOutput(fvk.ovk, pa, 25000, {});
+        builder.AddSaplingOutput(fvk.ovk, pa, ASSET_ZCASH, 25000, {});
         auto tx = builder.Build().GetTxOrThrow();
 
         EXPECT_EQ(tx.vin.size(), 0);
@@ -445,7 +445,7 @@ TEST(TransactionBuilder, SetFee)
     {
         auto builder = TransactionBuilder(consensusParams, 1);
         builder.AddSaplingSpend(expsk, testNote.note, testNote.tree.root(), testNote.tree.witness());
-        builder.AddSaplingOutput(fvk.ovk, pa, 25000, {});
+        builder.AddSaplingOutput(fvk.ovk, pa, ASSET_ZCASH, 25000, {});
         builder.SetFee(20000);
         auto tx = builder.Build().GetTxOrThrow();
 
@@ -474,7 +474,7 @@ TEST(TransactionBuilder, CheckSaplingTxVersion)
     // Cannot add Sapling outputs to a non-Sapling transaction
     auto builder = TransactionBuilder(consensusParams, 1);
     try {
-        builder.AddSaplingOutput(uint256(), pk, 12345, {});
+        builder.AddSaplingOutput(uint256(), pk, ASSET_ZCASH, 12345, {});
     } catch (std::runtime_error const & err) {
         EXPECT_EQ(err.what(), std::string("TransactionBuilder cannot add Sapling output to pre-Sapling transaction"));
     } catch(...) {

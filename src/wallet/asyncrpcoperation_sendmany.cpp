@@ -445,7 +445,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             auto memo = get_memo_from_hex_string(hexMemo);
 
-            builder_.AddSaplingOutput(ovk, to, value, memo);
+            builder_.AddSaplingOutput(ovk, to, ASSET_ZCASH, value, memo);
         }
 
         // Add transparent outputs

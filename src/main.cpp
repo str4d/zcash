@@ -1051,7 +1051,7 @@ bool ContextualCheckTransaction(
 
         if (!librustzcash_sapling_final_check(
             ctx,
-            ASSET_ZCASH,
+            tx.valueBalanceAssetType,
             tx.valueBalance,
             tx.bindingSig.begin(),
             dataToBeSigned.begin()
@@ -1182,7 +1182,7 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
                             REJECT_INVALID, "bad-txns-valuebalance-toolarge");
     }
 
-    if (tx.valueBalance <= 0) {
+    if (tx.valueBalanceAssetType == ASSET_ZCASH && tx.valueBalance <= 0) {
         // NB: negative valueBalance "takes" money from the transparent value pool just as outputs do
         nValueOut += -tx.valueBalance;
 
@@ -1244,7 +1244,7 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
         }
 
         // Also check for Sapling
-        if (tx.valueBalance >= 0) {
+        if (tx.valueBalanceAssetType == ASSET_ZCASH && tx.valueBalance >= 0) {
             // NB: positive valueBalance "adds" money to the transparent value pool, just as inputs do
             nValueIn += tx.valueBalance;
 
@@ -3615,11 +3615,13 @@ bool ReceivedBlockTransactions(
     CAmount sproutValue = 0;
     CAmount saplingValue = 0;
     for (auto tx : block.vtx) {
-        // Negative valueBalance "takes" money from the transparent value pool
-        // and adds it to the Sapling value pool. Positive valueBalance "gives"
-        // money to the transparent value pool, removing from the Sapling value
-        // pool. So we invert the sign here.
-        saplingValue += -tx.valueBalance;
+        if (tx.valueBalanceAssetType == ASSET_ZCASH) {
+            // Negative valueBalance "takes" money from the transparent value pool
+            // and adds it to the Sapling value pool. Positive valueBalance "gives"
+            // money to the transparent value pool, removing from the Sapling value
+            // pool. So we invert the sign here.
+            saplingValue += -tx.valueBalance;
+        }
 
         for (auto js : tx.vJoinSplit) {
             sproutValue += js.vpub_old;

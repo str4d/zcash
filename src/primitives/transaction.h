@@ -552,6 +552,7 @@ public:
     const std::vector<CTxOut> vout;
     const uint32_t nLockTime;
     const uint32_t nExpiryHeight;
+    const uint32_t valueBalanceAssetType;
     const CAmount valueBalance;
     const std::vector<SpendDescription> vShieldedSpend;
     const std::vector<OutputDescription> vShieldedOutput;
@@ -606,6 +607,7 @@ public:
             READWRITE(*const_cast<uint32_t*>(&nExpiryHeight));
         }
         if (isSaplingV4) {
+            READWRITE(*const_cast<uint32_t*>(&valueBalanceAssetType));
             READWRITE(*const_cast<CAmount*>(&valueBalance));
             READWRITE(*const_cast<std::vector<SpendDescription>*>(&vShieldedSpend));
             READWRITE(*const_cast<std::vector<OutputDescription>*>(&vShieldedOutput));
@@ -700,6 +702,7 @@ struct CMutableTransaction
     uint32_t nLockTime;
     uint32_t nExpiryHeight;
     CAmount valueBalance;
+    uint32_t valueBalanceAssetType = ASSET_ZCASH;
     std::vector<SpendDescription> vShieldedSpend;
     std::vector<OutputDescription> vShieldedOutput;
     std::vector<JSDescription> vJoinSplit;
@@ -752,6 +755,7 @@ struct CMutableTransaction
             READWRITE(nExpiryHeight);
         }
         if (isSaplingV4) {
+            READWRITE(valueBalanceAssetType);
             READWRITE(valueBalance);
             READWRITE(vShieldedSpend);
             READWRITE(vShieldedOutput);
