@@ -238,12 +238,12 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         t_inputs_total += std::get<2>(t);
     }
 
-    CAmount z_inputs_total = 0;
+    std::map<uint32_t, CAmount> z_inputs_total;
     for (SendManyInputJSOP & t : z_sprout_inputs_) {
-        z_inputs_total += std::get<2>(t);
+        z_inputs_total[ASSET_ZCASH] += std::get<2>(t);
     }
     for (auto t : z_sapling_inputs_) {
-        z_inputs_total += t.note.value();
+        z_inputs_total[t.note.assetType] += t.note.value();
     }
 
     CAmount t_outputs_total = 0;
@@ -251,33 +251,46 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         t_outputs_total += std::get<1>(t);
     }
 
-    CAmount z_outputs_total = 0;
+    std::map<uint32_t, CAmount> z_outputs_total;
     for (SendManyRecipient & t : z_outputs_) {
-        z_outputs_total += std::get<1>(t);
+        z_outputs_total[std::get<3>(t)] += std::get<1>(t);
     }
 
-    CAmount sendAmount = z_outputs_total + t_outputs_total;
-    CAmount targetAmount = sendAmount + minersFee;
+    std::map<uint32_t, CAmount> targetAmounts;
+    for (auto asset : z_outputs_total) {
+        targetAmounts[asset.first] = asset.second;
+    }
+    targetAmounts[ASSET_ZCASH] += t_outputs_total + minersFee;
 
-    assert(!isfromtaddr_ || z_inputs_total == 0);
+    for (auto asset : z_inputs_total) {
+        assert(!isfromtaddr_ || asset.second == 0);
+    }
     assert(!isfromzaddr_ || t_inputs_total == 0);
 
-    if (isfromtaddr_ && (t_inputs_total < targetAmount)) {
+    if (isfromtaddr_ && (t_inputs_total < targetAmounts[ASSET_ZCASH])) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
             strprintf("Insufficient transparent funds, have %s, need %s",
-            FormatMoney(t_inputs_total), FormatMoney(targetAmount)));
+            FormatMoney(t_inputs_total), FormatMoney(targetAmounts[ASSET_ZCASH])));
     }
-    
-    if (isfromzaddr_ && (z_inputs_total < targetAmount)) {
-        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
-            strprintf("Insufficient shielded funds, have %s, need %s",
-            FormatMoney(z_inputs_total), FormatMoney(targetAmount)));
+
+    for (auto asset : targetAmounts) {
+        auto assetType = asset.first;
+        auto availableInput = z_inputs_total[assetType];
+        auto targetAmount = asset.second;
+
+        if (isfromzaddr_ && (availableInput < targetAmount)) {
+            throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
+                strprintf("Insufficient shielded funds for asset type %d, have %s, need %s",
+                assetType, FormatMoney(availableInput), FormatMoney(targetAmount)));
+        }
     }
 
     // If from address is a taddr, select UTXOs to spend
     CAmount selectedUTXOAmount = 0;
     bool selectedUTXOCoinbase = false;
     if (isfromtaddr_) {
+        auto targetAmount = targetAmounts[ASSET_ZCASH];
+
         // Get dust threshold
         CKey secret;
         secret.MakeNewKey(true);
@@ -351,11 +364,15 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     }
 
     LogPrint((isfromtaddr_) ? "zrpc" : "zrpcunsafe", "%s: spending %s to send %s with fee %s\n",
-            getId(), FormatMoney(targetAmount), FormatMoney(sendAmount), FormatMoney(minersFee));
+            getId(), FormatMoney(targetAmounts[ASSET_ZCASH]), FormatMoney(targetAmounts[ASSET_ZCASH] - minersFee), FormatMoney(minersFee));
     LogPrint("zrpc", "%s: transparent input: %s (to choose from)\n", getId(), FormatMoney(t_inputs_total));
-    LogPrint("zrpcunsafe", "%s: private input: %s (to choose from)\n", getId(), FormatMoney(z_inputs_total));
+    for (auto asset : z_inputs_total) {
+        LogPrint("zrpcunsafe", "%s: private input: %s with asset type %d (to choose from)\n", getId(), FormatMoney(asset.second), asset.first);
+    }
     LogPrint("zrpc", "%s: transparent output: %s\n", getId(), FormatMoney(t_outputs_total));
-    LogPrint("zrpcunsafe", "%s: private output: %s\n", getId(), FormatMoney(z_outputs_total));
+    for (auto asset : z_outputs_total) {
+        LogPrint("zrpcunsafe", "%s: private output: %s with asset type %d\n", getId(), FormatMoney(asset.second), asset.first);
+    }
     LogPrint("zrpc", "%s: fee: %s\n", getId(), FormatMoney(minersFee));
 
 
@@ -407,14 +424,14 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         // Select Sapling notes
         std::vector<SaplingOutPoint> ops;
         std::vector<SaplingNote> notes;
-        CAmount sum = 0;
+        std::map<uint32_t, CAmount> sums;
         for (auto t : z_sapling_inputs_) {
+            if (sums[t.note.assetType] >= targetAmounts[t.note.assetType]) {
+                continue;
+            }
+            sums[t.note.assetType] += t.note.value();
             ops.push_back(t.op);
             notes.push_back(t.note);
-            sum += t.note.value();
-            if (sum >= targetAmount) {
-                break;
-            }
         }
 
         // Fetch Sapling anchor and witnesses
@@ -438,6 +455,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             auto address = std::get<0>(r);
             auto value = std::get<1>(r);
             auto hexMemo = std::get<2>(r);
+            auto assetType = std::get<3>(r);
 
             auto addr = DecodePaymentAddress(address);
             assert(boost::get<libzcash::SaplingPaymentAddress>(&addr) != nullptr);
@@ -445,7 +463,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             auto memo = get_memo_from_hex_string(hexMemo);
 
-            builder_.AddSaplingOutput(ovk, to, ASSET_ZCASH, value, memo);
+            builder_.AddSaplingOutput(ovk, to, assetType, value, memo);
         }
 
         // Add transparent outputs
@@ -524,7 +542,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     for (auto o : z_sprout_inputs_) {
         zInputsDeque.push_back(o);
         tmp += std::get<2>(o);
-        if (tmp >= targetAmount) {
+        if (tmp >= targetAmounts[ASSET_ZCASH]) {
             break;
         }
     }
@@ -564,7 +582,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         add_taddr_outputs_to_tx();
         
         CAmount funds = selectedUTXOAmount;
-        CAmount fundsSpent = t_outputs_total + minersFee + z_outputs_total;
+        CAmount fundsSpent = t_outputs_total + minersFee + z_outputs_total[ASSET_ZCASH];
         CAmount change = funds - fundsSpent;
 
         CReserveKey keyChange(pwalletMain);
@@ -847,7 +865,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             } else if (outAmount > jsInputValue) {
                 // Any amount due is owed to the recipient.  Let the miners fee get paid first.
                 CAmount due = outAmount - jsInputValue;
-                SendManyRecipient r = SendManyRecipient(address, due, hexMemo);
+                SendManyRecipient r = SendManyRecipient(address, due, hexMemo, ASSET_ZCASH);
                 zOutputsDeque.push_front(r);
 
                 // reduce the amount being sent right now to the value of all inputs

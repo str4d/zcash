@@ -25,8 +25,8 @@
 
 using namespace libzcash;
 
-// A recipient is a tuple of address, amount, memo (optional if zaddr)
-typedef std::tuple<std::string, CAmount, std::string> SendManyRecipient;
+// A recipient is a tuple of address, amount, memo (optional if zaddr), assetType
+typedef std::tuple<std::string, CAmount, std::string, uint32_t> SendManyRecipient;
 
 // Input UTXO is a tuple (quadruple) of txid, vout, amount, coinbase)
 typedef std::tuple<uint256, int, CAmount, bool> SendManyInputUTXO;

@@ -3643,6 +3643,7 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
             "\nSend multiple times. Amounts are decimal numbers with at most 8 digits of precision."
             "\nChange generated from a taddr flows to a new taddr address, while change generated from a zaddr returns to itself."
             "\nWhen sending coinbase UTXOs to a zaddr, change is not allowed. The entire value of the UTXO(s) must be consumed."
+            "\nWhen sending a non-" + CURRENCY_UNIT + " asset type, fromaddress must be a zaddr."
             + strprintf("\nBefore Sapling activates, the maximum number of zaddr outputs is %d due to transaction size limits.\n", Z_SENDMANY_MAX_ZADDR_OUTPUTS_BEFORE_SAPLING)
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
@@ -3650,7 +3651,8 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
             "2. \"amounts\"             (array, required) An array of json objects representing the amounts to send.\n"
             "    [{\n"
             "      \"address\":address  (string, required) The address is a taddr or zaddr\n"
-            "      \"amount\":amount    (numeric, required) The numeric amount in " + CURRENCY_UNIT + " is the value\n"
+            "      \"assetType\":amount (numeric, optional) If the address is a Sapling address, the type of asset to transfer. Defaults to " + strprintf("%d for %s", ASSET_ZCASH, CURRENCY_UNIT) + "\n"
+            "      \"amount\":amount    (numeric, required) The numeric amount in " + CURRENCY_UNIT + " (or the specified asset type) is the value\n"
             "      \"memo\":memo        (string, optional) If the address is a zaddr, raw data represented in hexadecimal string format\n"
             "    }, ... ]\n"
             "3. minconf               (numeric, optional, default=1) Only use funds confirmed at least this many times.\n"
@@ -3715,19 +3717,20 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
         // sanity check, report error if unknown key-value pairs
         for (const string& name_ : o.getKeys()) {
             std::string s = name_;
-            if (s != "address" && s != "amount" && s!="memo")
+            if (s != "address" && s != "assetType" && s != "amount" && s!="memo")
                 throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown key: ")+s);
         }
 
         string address = find_value(o, "address").get_str();
         bool isZaddr = false;
+        bool toSapling = false;
         CTxDestination taddr = DecodeDestination(address);
         if (!IsValidDestination(taddr)) {
             auto res = DecodePaymentAddress(address);
             if (IsValidPaymentAddress(res)) {
                 isZaddr = true;
 
-                bool toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
+                toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
                 bool toSprout = !toSapling;
                 noSproutAddrs = noSproutAddrs && toSapling;
 
@@ -3770,18 +3773,35 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
             }
         }
 
+        uint32_t assetType = ASSET_ZCASH;
+        UniValue atValue = find_value(o, "assetType");
+        if (!atValue.isNull()) {
+            assetType = atValue.get_int();
+        }
+        if (assetType != ASSET_ZCASH && assetType != ASSET_STR4DBUCKS) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid asset type");
+        }
+        if (!fromSapling && assetType != ASSET_ZCASH) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only send assets from a Sapling address");
+        }
+        if (!toSapling && assetType != ASSET_ZCASH) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only send assets to Sapling addresses");
+        }
+
         UniValue av = find_value(o, "amount");
         CAmount nAmount = AmountFromValue( av );
         if (nAmount < 0)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, amount must be positive");
 
         if (isZaddr) {
-            zaddrRecipients.push_back( SendManyRecipient(address, nAmount, memo) );
+            zaddrRecipients.push_back( SendManyRecipient(address, nAmount, memo, assetType) );
         } else {
-            taddrRecipients.push_back( SendManyRecipient(address, nAmount, memo) );
+            taddrRecipients.push_back( SendManyRecipient(address, nAmount, memo, ASSET_ZCASH) );
         }
 
-        nTotalOut += nAmount;
+        if (assetType == ASSET_ZCASH) {
+            nTotalOut += nAmount;
+        }
     }
 
     int nextBlockHeight = chainActive.Height() + 1;
