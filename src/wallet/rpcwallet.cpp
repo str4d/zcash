@@ -26,6 +26,7 @@
 #include "utiltime.h"
 #include "asyncrpcoperation.h"
 #include "asyncrpcqueue.h"
+#include "wallet/asyncrpcoperation_issueasset.h"
 #include "wallet/asyncrpcoperation_mergetoaddress.h"
 #include "wallet/asyncrpcoperation_saplingmigration.h"
 #include "wallet/asyncrpcoperation_sendmany.h"
@@ -4757,6 +4758,135 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
 }
 
 
+UniValue z_issueasset(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (fHelp || params.size() < 3 || params.size() > 4)
+        throw runtime_error(
+            "z_issueasset assetType assetAmount \"tozaddress\" ( fee )\n"
+            "\nIssue an asset to a shielded zaddr."
+            + HelpRequiringPassphrase() + "\n"
+            "\nArguments:\n"
+            "1. assetType             (numeric, required) The asset type to issue.\n"
+            "2. assetAmount           (numeric, required) The amount to issue.\n"
+            "3. \"toaddress\"           (string, required) The address is a zaddr.\n"
+            "4. fee                   (numeric, optional, default="
+            + strprintf("%s", FormatMoney(SHIELD_COINBASE_DEFAULT_MINERS_FEE)) + ") The fee amount to attach to this transaction.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"opid\": xxx          (string) An operationid to pass to z_getoperationstatus to get the result of the operation.\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("z_issueasset", "\"t1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" \"ztfaW34Gj9FrnGUEf833ywDVL62NWXBM81u6EQnM6VR45eYnXhwztecW1SjxA7JrmAXKJhxhj3vDNEpVCQoSvVoSpmbhtjf\"")
+            + HelpExampleRpc("z_issueasset", "\"t1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", \"ztfaW34Gj9FrnGUEf833ywDVL62NWXBM81u6EQnM6VR45eYnXhwztecW1SjxA7JrmAXKJhxhj3vDNEpVCQoSvVoSpmbhtjf\"")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    uint32_t assetType = params[0].get_int64();
+    if (assetType != ASSET_ZCASH && assetType != ASSET_STR4DBUCKS) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid asset type");
+    }
+
+    CAmount assetAmount = AmountFromValue(params[1]);
+    if (assetAmount < 0) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, assetAmount must be positive");
+    }
+
+    // Validate the destination address
+    auto destaddress = params[2].get_str();
+    if (!IsValidPaymentAddressString(destaddress)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
+    }
+
+    // Convert fee from currency format to zatoshis
+    CAmount nFee = SHIELD_COINBASE_DEFAULT_MINERS_FEE;
+    if (params.size() > 3) {
+        if (params[3].get_real() == 0.0) {
+            nFee = 0;
+        } else {
+            nFee = AmountFromValue( params[3] );
+        }
+    }
+
+    int nextBlockHeight = chainActive.Height() + 1;
+    bool overwinterActive = Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_OVERWINTER);
+    unsigned int max_tx_size = MAX_TX_SIZE_AFTER_SAPLING;
+    if (!Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_SAPLING)) {
+        max_tx_size = MAX_TX_SIZE_BEFORE_SAPLING;
+        auto res = DecodePaymentAddress(destaddress);
+        // If Sapling is not active, do not allow sending to a Sapling address.
+        if (IsValidPaymentAddress(res)) {
+            bool toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
+            if (toSapling) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, Sapling has not activated");
+            }
+        } else {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
+        }
+    }
+
+    // Prepare to get utxos
+    std::vector<IssueAssetUTXO> inputs;
+    CAmount shieldedValue = 0;
+
+    // Set of addresses to filter utxos by
+    std::set<CTxDestination> destinations = {};
+
+    // Get available utxos
+    vector<COutput> vecOutputs;
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true);
+
+    // Find unspent coinbase utxos and update estimated size
+    for (const COutput& out : vecOutputs) {
+        if (!out.fSpendable) {
+            continue;
+        }
+
+        if (out.tx->IsCoinBase()) {
+            continue;
+        }
+
+        auto scriptPubKey = out.tx->vout[out.i].scriptPubKey;
+        CAmount nValue = out.tx->vout[out.i].nValue;
+
+        IssueAssetUTXO utxo = {out.tx->GetHash(), out.i, scriptPubKey, nValue};
+        inputs.push_back(utxo);
+        shieldedValue += nValue;
+    }
+
+    if (shieldedValue < nFee) {
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
+            strprintf("Insufficient non-coinbase transparent funds, have %s, which is less than miners fee %s",
+            FormatMoney(shieldedValue), FormatMoney(nFee)));
+    }
+
+    // Keep record of parameters in context object
+    UniValue contextInfo(UniValue::VOBJ);
+    contextInfo.push_back(Pair("assetType", params[0]));
+    contextInfo.push_back(Pair("assetAmount", params[1]));
+    contextInfo.push_back(Pair("toaddress", params[2]));
+    contextInfo.push_back(Pair("fee", ValueFromAmount(nFee)));
+
+    TransactionBuilder builder = TransactionBuilder(
+        Params().GetConsensus(), nextBlockHeight, pwalletMain);
+
+    // Create operation and add to global queue
+    std::shared_ptr<AsyncRPCQueue> q = getAsyncRPCQueue();
+    std::shared_ptr<AsyncRPCOperation> operation(new AsyncRPCOperation_issueasset(
+        builder, inputs, destaddress, assetType, assetAmount, nFee, contextInfo));
+    q->addOperation(operation);
+    AsyncRPCOperationId operationId = operation->getId();
+
+    // Return continuation information
+    UniValue o(UniValue::VOBJ);
+    o.push_back(Pair("opid", operationId));
+    return o;
+}
+
+
 UniValue z_listoperationids(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
@@ -4878,6 +5008,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "z_setmigration",           &z_setmigration,           false },
     { "wallet",             "z_getmigrationstatus",     &z_getmigrationstatus,     false },
     { "wallet",             "z_shieldcoinbase",         &z_shieldcoinbase,         false },
+    { "wallet",             "z_issueasset",             &z_issueasset,             false },
     { "wallet",             "z_getoperationstatus",     &z_getoperationstatus,     true  },
     { "wallet",             "z_getoperationresult",     &z_getoperationresult,     true  },
     { "wallet",             "z_listoperationids",       &z_listoperationids,       true  },

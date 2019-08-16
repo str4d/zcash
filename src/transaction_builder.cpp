@@ -221,13 +221,55 @@ TransactionBuilderResult TransactionBuilder::Build()
     // Consistency checks
     //
 
+    bool isAssetIssuance = (mtx.valueBalanceAssetType != ASSET_ZCASH);
+    if (isAssetIssuance) {
+        // This is an issuance transaction, so transparent and Sprout funds
+        // are accounted for separately.
+        CAmount change = -fee;
+        for (auto jsInput : jsInputs) {
+            change += jsInput.note.value();
+        }
+        for (auto jsOutput : jsOutputs) {
+            change -= jsOutput.value;
+        }
+        for (auto tIn : tIns) {
+            change += tIn.value;
+        }
+        for (auto tOut : mtx.vout) {
+            change -= tOut.nValue;
+        }
+        if (change < 0) {
+            return TransactionBuilderResult(
+                strprintf("Change cannot be negative for non-Sapling funds during asset issuance (valueBalanceAssetType = %d", mtx.valueBalanceAssetType));
+        }
+
+        if (change > 0) {
+            // Send change to the specified change address. If no change address
+            // was set, send change to the first Sapling address given as input
+            // if any; otherwise the first Sprout address given as input.
+            // (A t-address can only be used as the change address if explicitly set.)
+            if (sproutChangeAddr) {
+                AddSproutOutput(sproutChangeAddr.get(), change);
+            } else if (tChangeAddr) {
+                // tChangeAddr has already been validated.
+                AddTransparentOutput(tChangeAddr.value(), change);
+            } else if (!jsInputs.empty()) {
+                auto changeAddr = jsInputs[0].key.address();
+                AddSproutOutput(changeAddr, change);
+            } else {
+                return TransactionBuilderResult(
+                    strprintf("Could not determine change address"));
+            }
+        }
+    }
+
     for (auto asset : assetBalances) {
         uint32_t assetType = asset.first;
         bool isZcash = (assetType == ASSET_ZCASH);
 
         // Valid change
         CAmount change = assetBalances[assetType];
-        if (isZcash) {
+        if (isZcash && !isAssetIssuance) {
             change -= fee;
             for (auto jsInput : jsInputs) {
                 change += jsInput.note.value();
@@ -242,7 +284,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 change -= tOut.nValue;
             }
         }
-        if (change < 0) {
+        if (change < 0 && mtx.valueBalanceAssetType != assetType) {
             return TransactionBuilderResult(
                 strprintf("Change cannot be negative for asset type %d", assetType));
         }
@@ -258,9 +300,9 @@ TransactionBuilderResult TransactionBuilder::Build()
             // (A t-address can only be used as the change address if explicitly set.)
             if (saplingChangeAddr) {
                 AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, assetType, change);
-            } else if (isZcash && sproutChangeAddr) {
+            } else if (isZcash && !isAssetIssuance && sproutChangeAddr) {
                 AddSproutOutput(sproutChangeAddr.get(), change);
-            } else if (isZcash && tChangeAddr) {
+            } else if (isZcash && !isAssetIssuance && tChangeAddr) {
                 // tChangeAddr has already been validated.
                 AddTransparentOutput(tChangeAddr.value(), change);
             } else if (!assetSpends[assetType].empty()) {
@@ -268,7 +310,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 auto note = assetSpends[assetType][0].note;
                 libzcash::SaplingPaymentAddress changeAddr(note.d, note.pk_d);
                 AddSaplingOutput(fvk.ovk, changeAddr, assetType, change);
-            } else if (isZcash && !jsInputs.empty()) {
+            } else if (isZcash && !isAssetIssuance && !jsInputs.empty()) {
                 auto changeAddr = jsInputs[0].key.address();
                 AddSproutOutput(changeAddr, change);
             } else {
