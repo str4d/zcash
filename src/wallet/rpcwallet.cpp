@@ -3289,19 +3289,19 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
     return balance;
 }
 
-CAmount getBalanceZaddr(std::string address, int minDepth = 1, bool ignoreUnspendable=true) {
-    CAmount balance = 0;
+std::map<uint32_t, CAmount> getBalanceZaddr(std::string address, int minDepth = 1, bool ignoreUnspendable=true) {
+    std::map<uint32_t, CAmount> balances;
     std::vector<SproutNoteEntry> sproutEntries;
     std::vector<SaplingNoteEntry> saplingEntries;
     LOCK2(cs_main, pwalletMain->cs_wallet);
     pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, address, minDepth, true, ignoreUnspendable);
     for (auto & entry : sproutEntries) {
-        balance += CAmount(entry.note.value());
+        balances[ASSET_ZCASH] += CAmount(entry.note.value());
     }
     for (auto & entry : saplingEntries) {
-        balance += CAmount(entry.note.value());
+        balances[entry.note.assetType] += CAmount(entry.note.value());
     }
-    return balance;
+    return balances;
 }
 
 
@@ -3450,10 +3450,62 @@ UniValue z_getbalance(const UniValue& params, bool fHelp)
     if (fromTaddr) {
         nBalance = getBalanceTaddr(fromaddress, nMinDepth, false);
     } else {
-        nBalance = getBalanceZaddr(fromaddress, nMinDepth, false);
+        nBalance = getBalanceZaddr(fromaddress, nMinDepth, false)[ASSET_ZCASH];
     }
 
     return ValueFromAmount(nBalance);
+}
+
+UniValue z_getassetbalance(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (fHelp || params.size() < 2 || params.size() > 3)
+        throw runtime_error(
+            "z_getassetbalance \"address\" \"assetType\" ( minconf )\n"
+            "\nReturns the balance of a particular asset for a Sapling address belonging to the node's wallet.\n"
+            "\nArguments:\n"
+            "1. \"address\"      (string) The selected Sapling address.\n"
+            "2. assetType        (numeric) The asset type to query.\n"
+            "3. minconf          (numeric, optional, default=1) Only include transactions confirmed at least this many times.\n"
+            "\nResult:\n"
+            "amount              (numeric) The total amount received for this address.\n"
+            "\nExamples:\n"
+            "\nThe total amount received by address \"myaddress\"\n"
+            + HelpExampleCli("z_getassetbalance", "\"myaddress\"") +
+            "\nThe total amount received by address \"myaddress\" at least 5 blocks confirmed\n"
+            + HelpExampleCli("z_getassetbalance", "\"myaddress\" 5") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("z_getassetbalance", "\"myaddress\", 5")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    uint32_t assetType = params[1].get_int64();
+    if (assetType != ASSET_ZCASH && assetType != ASSET_STR4DBUCKS) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid asset type");
+    }
+
+    int nMinDepth = 1;
+    if (params.size() > 2) {
+        nMinDepth = params[2].get_int();
+    }
+    if (nMinDepth < 0) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Minimum number of confirmations cannot be less than 0");
+    }
+
+    // Check that the from address is valid.
+    auto fromaddress = params[0].get_str();
+    auto res = DecodePaymentAddress(fromaddress);
+    if (boost::get<libzcash::SaplingPaymentAddress>(&res) == nullptr) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, should be a Sapling address.");
+    }
+    if (!boost::apply_visitor(PaymentAddressBelongsToWallet(pwalletMain), res)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "From address does not belong to this node, spending key or viewing key not found.");
+    }
+
+    return ValueFromAmount(getBalanceZaddr(fromaddress, nMinDepth, false)[assetType]);
 }
 
 
@@ -3507,12 +3559,25 @@ UniValue z_gettotalbalance(const UniValue& params, bool fHelp)
     // pwalletMain->GetBalance() does not accept min depth parameter
     // so we use our own method to get balance of utxos.
     CAmount nBalance = getBalanceTaddr("", nMinDepth, !fIncludeWatchonly);
-    CAmount nPrivateBalance = getBalanceZaddr("", nMinDepth, !fIncludeWatchonly);
+    auto privateBalances = getBalanceZaddr("", nMinDepth, !fIncludeWatchonly);
+    CAmount nPrivateBalance = privateBalances[ASSET_ZCASH];
     CAmount nTotalBalance = nBalance + nPrivateBalance;
+
+    UniValue privateAssets(UniValue::VARR);
+    for (auto asset : privateBalances) {
+        if (asset.first != ASSET_ZCASH) {
+            UniValue obj(UniValue::VOBJ);
+            obj.push_back(Pair("assetType", (uint64_t) asset.first));
+            obj.push_back(Pair("total", FormatMoney(asset.second)));
+            privateAssets.push_back(obj);
+        }
+    }
+
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("transparent", FormatMoney(nBalance)));
     result.push_back(Pair("private", FormatMoney(nPrivateBalance)));
     result.push_back(Pair("total", FormatMoney(nTotalBalance)));
+    result.push_back(Pair("privateAssets", privateAssets));
     return result;
 }
 
@@ -4806,6 +4871,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "z_listreceivedbyaddress",  &z_listreceivedbyaddress,  false },
     { "wallet",             "z_listunspent",            &z_listunspent,            false },
     { "wallet",             "z_getbalance",             &z_getbalance,             false },
+    { "wallet",             "z_getassetbalance",        &z_getassetbalance,        false },
     { "wallet",             "z_gettotalbalance",        &z_gettotalbalance,        false },
     { "wallet",             "z_mergetoaddress",         &z_mergetoaddress,         false },
     { "wallet",             "z_sendmany",               &z_sendmany,               false },
