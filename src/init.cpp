@@ -689,8 +689,8 @@ static void ZC_LoadParams(
 
     boost::filesystem::path pk_path = ZC_GetParamsDir() / "sprout-proving.key";
     boost::filesystem::path vk_path = ZC_GetParamsDir() / "sprout-verifying.key";
-    boost::filesystem::path sapling_spend = ZC_GetParamsDir() / "sapling-spend.params";
-    boost::filesystem::path sapling_output = ZC_GetParamsDir() / "sapling-output.params";
+    boost::filesystem::path sapling_spend = ZC_GetParamsDir() / "uda-spend.params";
+    boost::filesystem::path sapling_output = ZC_GetParamsDir() / "uda-output.params";
     boost::filesystem::path sprout_groth16 = ZC_GetParamsDir() / "sprout-groth16.params";
 
     if (!(
@@ -734,10 +734,10 @@ static void ZC_LoadParams(
     librustzcash_init_zksnark_params(
         reinterpret_cast<const codeunit*>(sapling_spend_str.c_str()),
         sapling_spend_str.length(),
-        "8270785a1a0d0bc77196f000ee6d221c9c9894f55307bd9357c3f0105d31ca63991ab91324160d8f53e2bbd3c2633a6eb8bdf5205d822e7f3f73edac51b2b70c",
+        "8194254054005206011cacaf8cc69ad353475532a2bc069cef6c0fe10324480d969f3a74d93553616e521b0de811dd67b298e050e0c7d712a4e9972b3c8f4305",
         reinterpret_cast<const codeunit*>(sapling_output_str.c_str()),
         sapling_output_str.length(),
-        "657e3d38dbb5cb5e7dd2970e8b03d69b4787dd907285b5a7f0790dcc8072f60bf593b32cc2d1c030e00ff5ae64bf84c5c3beb84ddc841d48264b4a171744d028",
+        "d42e4f564d5f32dcda4f0e319372f4e9ca3b6258e0c6fec1673c7be4124dcaad4821a00ca33146a8e125725ef045968fde8d4f6bd6e8935647295e2e73406302",
         reinterpret_cast<const codeunit*>(sprout_groth16_str.c_str()),
         sprout_groth16_str.length(),
         "e9b238411bd6c0ec4791e9d04245ec350c9c5744f5610dfcce4365d5ca49dfefd5054e371842b3f88fa1b9d7e8e075249b3ebabd167fa8b0f3161292d36c180a"
