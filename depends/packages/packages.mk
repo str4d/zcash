@@ -63,7 +63,13 @@ rust_crates := \
   crate_semver_parser \
   crate_semver \
   crate_sha2 \
+  crate_sharded_slab \
+  crate_spin \
   crate_syn \
+  crate_tracing_attributes \
+  crate_tracing_core \
+  crate_tracing_subscriber \
+  crate_tracing \
   crate_typenum \
   crate_unicode_xid \
   crate_wasi \
