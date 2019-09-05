@@ -100,6 +100,29 @@ fn fixed_scalar_mult(from: &[u8; 32], p_g: FixedGenerators) -> edwards::Point<Bl
     JUBJUB.generator(p_g).mul(f, &JUBJUB)
 }
 
+#[no_mangle]
+pub extern "system" fn librustzcash_tracing_init() {
+    tracing_subscriber::fmt().init();
+}
+
+#[no_mangle]
+pub extern "system" fn librustzcash_tracing_error(message: *const c_char) {
+    let message = unsafe { CStr::from_ptr(message) }.to_str().unwrap();
+
+    use tracing::{event, Level};
+    event!(Level::ERROR, message);
+}
+
+#[no_mangle]
+pub extern "system" fn librustzcash_tracing_log(category: *const c_char, message: *const c_char) {
+    let category = unsafe { CStr::from_ptr(category) }.to_str().unwrap();
+    let message = unsafe { CStr::from_ptr(message) }.to_str().unwrap();
+
+    use tracing::{event, span, Level};
+    let span = span!(Level::INFO, "category", category);
+    event!(parent: &span, Level::INFO, message);
+}
+
 /// Loads the zk-SNARK parameters into memory and saves paths as necessary.
 /// Only called once.
 #[cfg(not(target_os = "windows"))]

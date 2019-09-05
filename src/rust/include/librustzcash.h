@@ -27,6 +27,20 @@ extern "C" {
     typedef uint8_t codeunit;
 #endif
 
+    /// Initializes the tracing crate.
+    void librustzcash_tracing_init();
+
+    /// Log an error message.
+    void librustzcash_tracing_error(
+        const char* message
+    );
+
+    /// Log a message.
+    void librustzcash_tracing_log(
+        const char* category,
+        const char* message
+    );
+
     void librustzcash_to_scalar(const unsigned char *input, unsigned char *result);
 
     void librustzcash_ask_to_ak(const unsigned char *ask, unsigned char *result);
