@@ -100,9 +100,41 @@ fn fixed_scalar_mult(from: &[u8; 32], p_g: FixedGenerators) -> edwards::Point<Bl
     JUBJUB.generator(p_g).mul(f, &JUBJUB)
 }
 
+type TracingHandle = tracing_subscriber::reload::Handle<
+    tracing_subscriber::filter::EnvFilter,
+    tracing_subscriber::fmt::Formatter,
+>;
+
 #[no_mangle]
-pub extern "system" fn librustzcash_tracing_init() {
-    tracing_subscriber::fmt().init();
+pub extern "system" fn librustzcash_tracing_init(directives: *const c_char) -> *mut TracingHandle {
+    let directives = unsafe { CStr::from_ptr(directives) }.to_str().unwrap();
+
+    let filter = tracing_subscriber::filter::EnvFilter::new(directives);
+
+    let builder = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_filter_reloading();
+    let handle = Box::new(builder.reload_handle());
+    builder.init();
+
+    Box::into_raw(handle)
+}
+
+#[no_mangle]
+pub extern "system" fn librustzcash_tracing_free(handle: *mut TracingHandle) {
+    drop(unsafe { Box::from_raw(handle) });
+}
+
+#[no_mangle]
+pub extern "system" fn librustzcash_tracing_reload(
+    handle: *mut TracingHandle,
+    directives: *const c_char,
+) {
+    let handle = unsafe { &mut *handle };
+    let directives = unsafe { CStr::from_ptr(directives) }.to_str().unwrap();
+
+    let filter = tracing_subscriber::filter::EnvFilter::new(directives);
+    handle.reload(filter).unwrap();
 }
 
 #[no_mangle]

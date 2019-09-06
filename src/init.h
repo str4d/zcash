@@ -19,6 +19,7 @@ class thread_group;
 } // namespace boost
 
 extern ZCJoinSplit* pzcashParams;
+extern void* pTracingHandle;
 
 void StartShutdown();
 bool ShutdownRequested();

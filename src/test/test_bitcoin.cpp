@@ -34,6 +34,7 @@
 CClientUIInterface uiInterface; // Declared but not defined in ui_interface.h
 ZCJoinSplit *pzcashParams;
 FastRandomContext insecure_rand_ctx(true);
+void* pTracingHandle = nullptr;
 
 extern bool fPrintToConsole;
 extern void noui_connect();
@@ -77,7 +78,7 @@ BasicTestingSetup::BasicTestingSetup(const std::string& chainName)
     ECC_Start();
     SetupEnvironment();
     SetupNetworking();
-    librustzcash_tracing_init();
+    pTracingHandle = librustzcash_tracing_init("info");
     fPrintToDebugLog = false; // don't want to write to debug.log file
     fCheckBlockIndex = true;
     SelectParams(chainName);

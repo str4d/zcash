@@ -27,8 +27,20 @@ extern "C" {
     typedef uint8_t codeunit;
 #endif
 
-    /// Initializes the tracing crate.
-    void librustzcash_tracing_init();
+    /// Initializes the tracing crate, returning a handle for
+    /// reloading the filter. Please free this when you're done.
+    void * librustzcash_tracing_init(
+        const char* directives
+    );
+
+    /// Frees a tracing handle returned from `librustzcash_tracing_init`.
+    void librustzcash_tracing_free(void *);
+
+    /// Reload the tracing filter.
+    void librustzcash_tracing_reload(
+        void * handle,
+        const char* directives
+    );
 
     /// Log an error message.
     void librustzcash_tracing_error(
