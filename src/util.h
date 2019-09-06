@@ -29,6 +29,8 @@
 #include <boost/signals2/signal.hpp>
 #include <boost/thread/exceptions.hpp>
 
+#include <librustzcash.h>
+
 static const bool DEFAULT_LOGTIMEMICROS = false;
 static const bool DEFAULT_LOGIPS        = false;
 static const bool DEFAULT_LOGTIMESTAMPS = true;
@@ -77,7 +79,7 @@ bool LogAcceptCategory(const char* category);
 /** Send a string to the log output */
 int LogPrintStr(const std::string &str);
 
-#define LogPrintf(...) LogPrint(NULL, __VA_ARGS__)
+#define LogPrintf(...) LogPrint("default", __VA_ARGS__)
 
 /**
  * When we switch to C++11, this can be switched to variadic templates instead
@@ -88,14 +90,14 @@ int LogPrintStr(const std::string &str);
     template<TINYFORMAT_ARGTYPES(n)>                                          \
     static inline int LogPrint(const char* category, const char* format, TINYFORMAT_VARARGS(n))  \
     {                                                                         \
-        if(!LogAcceptCategory(category)) return 0;                            \
-        return LogPrintStr(tfm::format(format, TINYFORMAT_PASSARGS(n))); \
+        librustzcash_tracing_log(category, tfm::format(format, TINYFORMAT_PASSARGS(n)).c_str());         \
+        return 1; \
     }                                                                         \
     /**   Log error and return false */                                        \
     template<TINYFORMAT_ARGTYPES(n)>                                          \
     static inline bool error(const char* format, TINYFORMAT_VARARGS(n))                     \
     {                                                                         \
-        LogPrintStr("ERROR: " + tfm::format(format, TINYFORMAT_PASSARGS(n)) + "\n"); \
+        librustzcash_tracing_error((tfm::format(format, TINYFORMAT_PASSARGS(n)) + "\n").c_str()); \
         return false;                                                         \
     }
 
@@ -107,12 +109,12 @@ TINYFORMAT_FOREACH_ARGNUM(MAKE_ERROR_AND_LOG_FUNC)
  */
 static inline int LogPrint(const char* category, const char* format)
 {
-    if(!LogAcceptCategory(category)) return 0;
-    return LogPrintStr(format);
+    librustzcash_tracing_log(category, format);
+    return 1;
 }
 static inline bool error(const char* format)
 {
-    LogPrintStr(std::string("ERROR: ") + format + "\n");
+    librustzcash_tracing_error(format);
     return false;
 }
 
