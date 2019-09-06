@@ -28,6 +28,8 @@
 #include <boost/thread.hpp>
 #include <boost/algorithm/string/case_conv.hpp> // for to_upper()
 
+#include <librustzcash.h>
+
 using namespace RPCServer;
 using namespace std;
 
@@ -239,6 +241,20 @@ UniValue help(const UniValue& params, bool fHelp)
 }
 
 
+UniValue setlogfilter(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+        throw runtime_error(
+            "setlogfilter \"directives\"\n"
+            "\nSet the log filter.");
+
+    auto directives = params[0].get_str();
+
+    librustzcash_tracing_reload(pTracingHandle, directives.c_str());
+
+    return "Log filter updated";
+}
+
 UniValue stop(const UniValue& params, bool fHelp)
 {
     // Accept the deprecated and ignored 'detach' boolean argument
@@ -260,6 +276,7 @@ static const CRPCCommand vRPCCommands[] =
   //  --------------------- ------------------------  -----------------------  ----------
     /* Overall control/query calls */
     { "control",            "help",                   &help,                   true  },
+    { "control",            "setlogfilter",           &setlogfilter,           true  },
     { "control",            "stop",                   &stop,                   true  },
 };
 
