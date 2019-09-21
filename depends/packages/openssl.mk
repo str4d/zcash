@@ -24,7 +24,8 @@ $(package)_config_opts+=no-crypto-mdebug-backtrace
 $(package)_config_opts+=no-ct
 $(package)_config_opts+=no-des
 $(package)_config_opts+=no-dgram
-$(package)_config_opts+=no-dsa
+# Required by i2pd at compile time
+# $(package)_config_opts+=no-dsa
 $(package)_config_opts+=no-dso
 $(package)_config_opts+=no-dtls
 $(package)_config_opts+=no-dtls1
@@ -57,7 +58,9 @@ $(package)_config_opts+=no-rmd160
 $(package)_config_opts+=no-scrypt
 $(package)_config_opts+=no-sctp
 $(package)_config_opts+=no-seed
-$(package)_config_opts+=no-shared
+# Required by i2pd at runtime to reseed (???)
+# This probably means it requires some other library that the system has.
+# $(package)_config_opts+=no-shared
 $(package)_config_opts+=no-sock
 $(package)_config_opts+=no-srp
 $(package)_config_opts+=no-srtp

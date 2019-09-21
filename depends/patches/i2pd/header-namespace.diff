@@ -1,0 +1,682 @@
+diff -ur i2pd-2.28.0/libi2pd/api.h i2pd-2.28.0-patched/libi2pd/api.h
+--- i2pd-2.28.0/libi2pd/api.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/api.h	2019-09-21 12:45:26.861271800 +0100
+@@ -3,9 +3,9 @@
+ 
+ #include <memory>
+ #include <iostream>
+-#include "Identity.h"
+-#include "Destination.h"
+-#include "Streaming.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/Destination.h"
++#include "libi2pd/Streaming.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Blinding.h i2pd-2.28.0-patched/libi2pd/Blinding.h
+--- i2pd-2.28.0/libi2pd/Blinding.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Blinding.h	2019-09-21 12:45:32.026459500 +0100
+@@ -4,7 +4,7 @@
+ #include <inttypes.h>
+ #include <string>
+ #include <vector>
+-#include "Identity.h"
++#include "libi2pd/Identity.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/ChaCha20.h i2pd-2.28.0-patched/libi2pd/ChaCha20.h
+--- i2pd-2.28.0/libi2pd/ChaCha20.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/ChaCha20.h	2019-09-21 12:45:36.930346200 +0100
+@@ -14,7 +14,7 @@
+ #include <cstring>
+ #include <inttypes.h>
+ #include <string.h>
+-#include "Crypto.h"
++#include "libi2pd/Crypto.h"
+ 
+ #if !OPENSSL_AEAD_CHACHA20_POLY1305
+ namespace i2p
+diff -ur i2pd-2.28.0/libi2pd/Crypto.h i2pd-2.28.0-patched/libi2pd/Crypto.h
+--- i2pd-2.28.0/libi2pd/Crypto.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Crypto.h	2019-09-21 12:45:45.732808200 +0100
+@@ -16,9 +16,9 @@
+ #include <openssl/engine.h>
+ #include <openssl/opensslv.h>
+ 
+-#include "Base.h"
+-#include "Tag.h"
+-#include "CPU.h"
++#include "libi2pd/Base.h"
++#include "libi2pd/Tag.h"
++#include "libi2pd/CPU.h"
+ 
+ // recognize openssl version and features
+ #if ((OPENSSL_VERSION_NUMBER < 0x010100000) || defined(LIBRESSL_VERSION_NUMBER)) // 1.0.2 and below or LibreSSL
+diff -ur i2pd-2.28.0/libi2pd/CryptoKey.h i2pd-2.28.0-patched/libi2pd/CryptoKey.h
+--- i2pd-2.28.0/libi2pd/CryptoKey.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/CryptoKey.h	2019-09-21 12:45:49.034977500 +0100
+@@ -2,7 +2,7 @@
+ #define CRYPTO_KEY_H__
+ 
+ #include <inttypes.h>
+-#include "Crypto.h"
++#include "libi2pd/Crypto.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Datagram.h i2pd-2.28.0-patched/libi2pd/Datagram.h
+--- i2pd-2.28.0/libi2pd/Datagram.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Datagram.h	2019-09-21 12:45:58.719081700 +0100
+@@ -5,11 +5,11 @@
+ #include <memory>
+ #include <functional>
+ #include <map>
+-#include "Base.h"
+-#include "Identity.h"
+-#include "LeaseSet.h"
+-#include "I2NPProtocol.h"
+-#include "Garlic.h"
++#include "libi2pd/Base.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/LeaseSet.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Garlic.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Destination.h i2pd-2.28.0-patched/libi2pd/Destination.h
+--- i2pd-2.28.0/libi2pd/Destination.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Destination.h	2019-09-21 12:46:04.665181100 +0100
+@@ -12,14 +12,14 @@
+ #include <future>
+ #endif
+ #include <boost/asio.hpp>
+-#include "Identity.h"
+-#include "TunnelPool.h"
+-#include "Crypto.h"
+-#include "LeaseSet.h"
+-#include "Garlic.h"
+-#include "NetDb.hpp"
+-#include "Streaming.h"
+-#include "Datagram.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/TunnelPool.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/LeaseSet.h"
++#include "libi2pd/Garlic.h"
++#include "libi2pd/NetDb.hpp"
++#include "libi2pd/Streaming.h"
++#include "libi2pd/Datagram.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Ed25519.h i2pd-2.28.0-patched/libi2pd/Ed25519.h
+--- i2pd-2.28.0/libi2pd/Ed25519.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Ed25519.h	2019-09-21 12:46:07.976326700 +0100
+@@ -3,7 +3,7 @@
+ 
+ #include <memory>
+ #include <openssl/bn.h>
+-#include "Crypto.h"
++#include "libi2pd/Crypto.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Family.h i2pd-2.28.0-patched/libi2pd/Family.h
+--- i2pd-2.28.0/libi2pd/Family.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Family.h	2019-09-21 12:46:18.407433200 +0100
+@@ -4,8 +4,8 @@
+ #include <map>
+ #include <string>
+ #include <memory>
+-#include "Signature.h"
+-#include "Identity.h"
++#include "libi2pd/Signature.h"
++#include "libi2pd/Identity.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Garlic.h i2pd-2.28.0-patched/libi2pd/Garlic.h
+--- i2pd-2.28.0/libi2pd/Garlic.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Garlic.h	2019-09-21 12:46:23.024087400 +0100
+@@ -8,11 +8,11 @@
+ #include <thread>
+ #include <mutex>
+ #include <memory>
+-#include "Crypto.h"
+-#include "I2NPProtocol.h"
+-#include "LeaseSet.h"
+-#include "Queue.h"
+-#include "Identity.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/LeaseSet.h"
++#include "libi2pd/Queue.h"
++#include "libi2pd/Identity.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/I2NPProtocol.h i2pd-2.28.0-patched/libi2pd/I2NPProtocol.h
+--- i2pd-2.28.0/libi2pd/I2NPProtocol.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/I2NPProtocol.h	2019-09-21 12:46:35.854777200 +0100
+@@ -5,11 +5,11 @@
+ #include <string.h>
+ #include <set>
+ #include <memory>
+-#include "Crypto.h"
+-#include "I2PEndian.h"
+-#include "Identity.h"
+-#include "RouterInfo.h"
+-#include "LeaseSet.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/I2PEndian.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/LeaseSet.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Identity.h i2pd-2.28.0-patched/libi2pd/Identity.h
+--- i2pd-2.28.0/libi2pd/Identity.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Identity.h	2019-09-21 12:46:45.052182300 +0100
+@@ -7,9 +7,9 @@
+ #include <memory>
+ #include <atomic>
+ #include <vector>
+-#include "Base.h"
+-#include "Signature.h"
+-#include "CryptoKey.h"
++#include "libi2pd/Base.h"
++#include "libi2pd/Signature.h"
++#include "libi2pd/CryptoKey.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/LeaseSet.h i2pd-2.28.0-patched/libi2pd/LeaseSet.h
+--- i2pd-2.28.0/libi2pd/LeaseSet.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/LeaseSet.h	2019-09-21 12:46:49.531205100 +0100
+@@ -6,10 +6,10 @@
+ #include <vector>
+ #include <set>
+ #include <memory>
+-#include "Identity.h"
+-#include "Timestamp.h"
+-#include "I2PEndian.h"
+-#include "Blinding.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/Timestamp.h"
++#include "libi2pd/I2PEndian.h"
++#include "libi2pd/Blinding.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Log.h i2pd-2.28.0-patched/libi2pd/Log.h
+--- i2pd-2.28.0/libi2pd/Log.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Log.h	2019-09-21 12:46:57.977618900 +0100
+@@ -17,7 +17,7 @@
+ #include <chrono>
+ #include <memory>
+ #include <thread>
+-#include "Queue.h"
++#include "libi2pd/Queue.h"
+ 
+ #ifndef _WIN32
+ #include <syslog.h>
+diff -ur i2pd-2.28.0/libi2pd/NetDb.hpp i2pd-2.28.0-patched/libi2pd/NetDb.hpp
+--- i2pd-2.28.0/libi2pd/NetDb.hpp	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/NetDb.hpp	2019-09-21 12:47:05.106555600 +0100
+@@ -9,18 +9,18 @@
+ #include <thread>
+ #include <mutex>
+ 
+-#include "Base.h"
+-#include "Gzip.h"
+-#include "FS.h"
+-#include "Queue.h"
+-#include "I2NPProtocol.h"
+-#include "RouterInfo.h"
+-#include "LeaseSet.h"
+-#include "Tunnel.h"
+-#include "TunnelPool.h"
+-#include "Reseed.h"
+-#include "NetDbRequests.h"
+-#include "Family.h"
++#include "libi2pd/Base.h"
++#include "libi2pd/Gzip.h"
++#include "libi2pd/FS.h"
++#include "libi2pd/Queue.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/LeaseSet.h"
++#include "libi2pd/Tunnel.h"
++#include "libi2pd/TunnelPool.h"
++#include "libi2pd/Reseed.h"
++#include "libi2pd/NetDbRequests.h"
++#include "libi2pd/Family.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/NetDbRequests.h i2pd-2.28.0-patched/libi2pd/NetDbRequests.h
+--- i2pd-2.28.0/libi2pd/NetDbRequests.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/NetDbRequests.h	2019-09-21 12:47:10.465226100 +0100
+@@ -4,8 +4,8 @@
+ #include <memory>
+ #include <set>
+ #include <map>
+-#include "Identity.h"
+-#include "RouterInfo.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterInfo.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/NTCP2.h i2pd-2.28.0-patched/libi2pd/NTCP2.h
+--- i2pd-2.28.0/libi2pd/NTCP2.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/NTCP2.h	2019-09-21 12:47:15.594509900 +0100
+@@ -20,10 +20,10 @@
+ #include <openssl/bn.h>
+ #include <openssl/evp.h>
+ #include <boost/asio.hpp>
+-#include "Crypto.h"
+-#include "util.h"
+-#include "RouterInfo.h"
+-#include "TransportSession.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/util.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/TransportSession.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/NTCPSession.h i2pd-2.28.0-patched/libi2pd/NTCPSession.h
+--- i2pd-2.28.0/libi2pd/NTCPSession.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/NTCPSession.h	2019-09-21 12:47:20.220140700 +0100
+@@ -7,12 +7,12 @@
+ #include <thread>
+ #include <mutex>
+ #include <boost/asio.hpp>
+-#include "Crypto.h"
+-#include "Identity.h"
+-#include "RouterInfo.h"
+-#include "I2NPProtocol.h"
+-#include "TransportSession.h"
+-#include "CryptoWorker.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/TransportSession.h"
++#include "libi2pd/CryptoWorker.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Poly1305.h i2pd-2.28.0-patched/libi2pd/Poly1305.h
+--- i2pd-2.28.0/libi2pd/Poly1305.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Poly1305.h	2019-09-21 12:47:23.089468100 +0100
+@@ -9,7 +9,7 @@
+ #define LIBI2PD_POLY1305_H
+ #include <cstdint>
+ #include <cstring>
+-#include "Crypto.h"
++#include "libi2pd/Crypto.h"
+ 
+ #if !OPENSSL_AEAD_CHACHA20_POLY1305 
+ namespace i2p
+diff -ur i2pd-2.28.0/libi2pd/Profiling.h i2pd-2.28.0-patched/libi2pd/Profiling.h
+--- i2pd-2.28.0/libi2pd/Profiling.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Profiling.h	2019-09-21 12:47:25.929872100 +0100
+@@ -3,7 +3,7 @@
+ 
+ #include <memory>
+ #include <boost/date_time/posix_time/posix_time.hpp>
+-#include "Identity.h"
++#include "libi2pd/Identity.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Reseed.h i2pd-2.28.0-patched/libi2pd/Reseed.h
+--- i2pd-2.28.0/libi2pd/Reseed.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Reseed.h	2019-09-21 12:47:31.602703200 +0100
+@@ -5,8 +5,8 @@
+ #include <string>
+ #include <vector>
+ #include <map>
+-#include "Identity.h"
+-#include "Crypto.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/Crypto.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/RouterContext.h i2pd-2.28.0-patched/libi2pd/RouterContext.h
+--- i2pd-2.28.0/libi2pd/RouterContext.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/RouterContext.h	2019-09-21 12:47:36.671149100 +0100
+@@ -7,9 +7,9 @@
+ #include <mutex>
+ #include <chrono>
+ #include <boost/asio.hpp>
+-#include "Identity.h"
+-#include "RouterInfo.h"
+-#include "Garlic.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/Garlic.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/RouterInfo.h i2pd-2.28.0-patched/libi2pd/RouterInfo.h
+--- i2pd-2.28.0/libi2pd/RouterInfo.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/RouterInfo.h	2019-09-21 12:47:40.228636100 +0100
+@@ -9,8 +9,8 @@
+ #include <iostream>
+ #include <boost/asio.hpp>
+ #include <boost/shared_ptr.hpp>
+-#include "Identity.h"
+-#include "Profiling.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/Profiling.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Signature.h i2pd-2.28.0-patched/libi2pd/Signature.h
+--- i2pd-2.28.0/libi2pd/Signature.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Signature.h	2019-09-21 12:47:46.025135800 +0100
+@@ -7,9 +7,9 @@
+ #include <openssl/ec.h>
+ #include <openssl/ecdsa.h>
+ #include <openssl/evp.h>
+-#include "Crypto.h"
+-#include "Ed25519.h"
+-#include "Gost.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/Ed25519.h"
++#include "libi2pd/Gost.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Siphash.h i2pd-2.28.0-patched/libi2pd/Siphash.h
+--- i2pd-2.28.0/libi2pd/Siphash.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Siphash.h	2019-09-21 12:47:48.960286800 +0100
+@@ -9,7 +9,7 @@
+ #define SIPHASH_H
+ 
+ #include <cstdint>
+-#include "Crypto.h"
++#include "libi2pd/Crypto.h"
+ 
+ #if !OPENSSL_SIPHASH
+ namespace i2p
+diff -ur i2pd-2.28.0/libi2pd/SSUData.h i2pd-2.28.0-patched/libi2pd/SSUData.h
+--- i2pd-2.28.0/libi2pd/SSUData.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/SSUData.h	2019-09-21 12:47:56.790348200 +0100
+@@ -8,9 +8,9 @@
+ #include <unordered_set>
+ #include <memory>
+ #include <boost/asio.hpp>
+-#include "I2NPProtocol.h"
+-#include "Identity.h"
+-#include "RouterInfo.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterInfo.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/SSU.h i2pd-2.28.0-patched/libi2pd/SSU.h
+--- i2pd-2.28.0/libi2pd/SSU.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/SSU.h	2019-09-21 12:47:53.173021800 +0100
+@@ -9,12 +9,12 @@
+ #include <thread>
+ #include <mutex>
+ #include <boost/asio.hpp>
+-#include "Crypto.h"
+-#include "I2PEndian.h"
+-#include "Identity.h"
+-#include "RouterInfo.h"
+-#include "I2NPProtocol.h"
+-#include "SSUSession.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/I2PEndian.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/SSUSession.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/SSUSession.h i2pd-2.28.0-patched/libi2pd/SSUSession.h
+--- i2pd-2.28.0/libi2pd/SSUSession.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/SSUSession.h	2019-09-21 12:48:00.899360900 +0100
+@@ -4,10 +4,10 @@
+ #include <inttypes.h>
+ #include <set>
+ #include <memory>
+-#include "Crypto.h"
+-#include "I2NPProtocol.h"
+-#include "TransportSession.h"
+-#include "SSUData.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/TransportSession.h"
++#include "libi2pd/SSUData.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Streaming.h i2pd-2.28.0-patched/libi2pd/Streaming.h
+--- i2pd-2.28.0/libi2pd/Streaming.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Streaming.h	2019-09-21 12:48:05.963818400 +0100
+@@ -10,14 +10,14 @@
+ #include <memory>
+ #include <mutex>
+ #include <boost/asio.hpp>
+-#include "Base.h"
+-#include "I2PEndian.h"
+-#include "Identity.h"
+-#include "LeaseSet.h"
+-#include "I2NPProtocol.h"
+-#include "Garlic.h"
+-#include "Tunnel.h"
+-#include "util.h" // MemoryPool
++#include "libi2pd/Base.h"
++#include "libi2pd/I2PEndian.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/LeaseSet.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Garlic.h"
++#include "libi2pd/Tunnel.h"
++#include "libi2pd/util.h" // MemoryPool
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Tag.h i2pd-2.28.0-patched/libi2pd/Tag.h
+--- i2pd-2.28.0/libi2pd/Tag.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Tag.h	2019-09-21 12:48:08.812201000 +0100
+@@ -12,7 +12,7 @@
+ #include <boost/static_assert.hpp>
+ #include <string.h>
+ #include <openssl/rand.h>
+-#include "Base.h"
++#include "libi2pd/Base.h"
+ 
+ namespace i2p {
+ namespace data {
+diff -ur i2pd-2.28.0/libi2pd/TransitTunnel.h i2pd-2.28.0-patched/libi2pd/TransitTunnel.h
+--- i2pd-2.28.0/libi2pd/TransitTunnel.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TransitTunnel.h	2019-09-21 12:48:14.923858500 +0100
+@@ -5,11 +5,11 @@
+ #include <vector>
+ #include <mutex>
+ #include <memory>
+-#include "Crypto.h"
+-#include "I2NPProtocol.h"
+-#include "TunnelEndpoint.h"
+-#include "TunnelGateway.h"
+-#include "TunnelBase.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/TunnelEndpoint.h"
++#include "libi2pd/TunnelGateway.h"
++#include "libi2pd/TunnelBase.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/TransportSession.h i2pd-2.28.0-patched/libi2pd/TransportSession.h
+--- i2pd-2.28.0/libi2pd/TransportSession.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TransportSession.h	2019-09-21 12:48:27.622899900 +0100
+@@ -5,11 +5,11 @@
+ #include <iostream>
+ #include <memory>
+ #include <vector>
+-#include "Identity.h"
+-#include "Crypto.h"
+-#include "RouterInfo.h"
+-#include "I2NPProtocol.h"
+-#include "Timestamp.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Timestamp.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Transports.h i2pd-2.28.0-patched/libi2pd/Transports.h
+--- i2pd-2.28.0/libi2pd/Transports.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Transports.h	2019-09-21 12:48:19.575420700 +0100
+@@ -12,13 +12,13 @@
+ #include <memory>
+ #include <atomic>
+ #include <boost/asio.hpp>
+-#include "TransportSession.h"
+-#include "NTCPSession.h"
+-#include "SSU.h"
+-#include "NTCP2.h"
+-#include "RouterInfo.h"
+-#include "I2NPProtocol.h"
+-#include "Identity.h"
++#include "libi2pd/TransportSession.h"
++#include "libi2pd/NTCPSession.h"
++#include "libi2pd/SSU.h"
++#include "libi2pd/NTCP2.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Identity.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/TunnelBase.h i2pd-2.28.0-patched/libi2pd/TunnelBase.h
+--- i2pd-2.28.0/libi2pd/TunnelBase.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TunnelBase.h	2019-09-21 12:48:39.251803200 +0100
+@@ -3,9 +3,9 @@
+ 
+ #include <inttypes.h>
+ #include <memory>
+-#include "Timestamp.h"
+-#include "I2NPProtocol.h"
+-#include "Identity.h"
++#include "libi2pd/Timestamp.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Identity.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/TunnelConfig.h i2pd-2.28.0-patched/libi2pd/TunnelConfig.h
+--- i2pd-2.28.0/libi2pd/TunnelConfig.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TunnelConfig.h	2019-09-21 12:48:45.012398800 +0100
+@@ -5,9 +5,9 @@
+ #include <sstream>
+ #include <vector>
+ #include <memory>
+-#include "Identity.h"
+-#include "RouterContext.h"
+-#include "Timestamp.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/RouterContext.h"
++#include "libi2pd/Timestamp.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/TunnelEndpoint.h i2pd-2.28.0-patched/libi2pd/TunnelEndpoint.h
+--- i2pd-2.28.0/libi2pd/TunnelEndpoint.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TunnelEndpoint.h	2019-09-21 12:49:01.248981000 +0100
+@@ -4,8 +4,8 @@
+ #include <inttypes.h>
+ #include <map>
+ #include <string>
+-#include "I2NPProtocol.h"
+-#include "TunnelBase.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/TunnelBase.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/TunnelGateway.h i2pd-2.28.0-patched/libi2pd/TunnelGateway.h
+--- i2pd-2.28.0/libi2pd/TunnelGateway.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TunnelGateway.h	2019-09-21 12:49:05.123619600 +0100
+@@ -4,8 +4,8 @@
+ #include <inttypes.h>
+ #include <vector>
+ #include <memory>
+-#include "I2NPProtocol.h"
+-#include "TunnelBase.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/TunnelBase.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/Tunnel.h i2pd-2.28.0-patched/libi2pd/Tunnel.h
+--- i2pd-2.28.0/libi2pd/Tunnel.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/Tunnel.h	2019-09-21 12:48:34.006828800 +0100
+@@ -10,16 +10,16 @@
+ #include <thread>
+ #include <mutex>
+ #include <memory>
+-#include "Queue.h"
+-#include "Crypto.h"
+-#include "TunnelConfig.h"
+-#include "TunnelPool.h"
+-#include "TransitTunnel.h"
+-#include "TunnelEndpoint.h"
+-#include "TunnelGateway.h"
+-#include "TunnelBase.h"
+-#include "I2NPProtocol.h"
+-#include "Event.h"
++#include "libi2pd/Queue.h"
++#include "libi2pd/Crypto.h"
++#include "libi2pd/TunnelConfig.h"
++#include "libi2pd/TunnelPool.h"
++#include "libi2pd/TransitTunnel.h"
++#include "libi2pd/TunnelEndpoint.h"
++#include "libi2pd/TunnelGateway.h"
++#include "libi2pd/TunnelBase.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/Event.h"
+ 
+ namespace i2p
+ {
+diff -ur i2pd-2.28.0/libi2pd/TunnelPool.h i2pd-2.28.0-patched/libi2pd/TunnelPool.h
+--- i2pd-2.28.0/libi2pd/TunnelPool.h	2019-08-27 15:17:32.000000000 +0100
++++ i2pd-2.28.0-patched/libi2pd/TunnelPool.h	2019-09-21 12:49:10.183090500 +0100
+@@ -7,13 +7,13 @@
+ #include <utility>
+ #include <mutex>
+ #include <memory>
+-#include "Identity.h"
+-#include "LeaseSet.h"
+-#include "RouterInfo.h"
+-#include "I2NPProtocol.h"
+-#include "TunnelBase.h"
+-#include "RouterContext.h"
+-#include "Garlic.h"
++#include "libi2pd/Identity.h"
++#include "libi2pd/LeaseSet.h"
++#include "libi2pd/RouterInfo.h"
++#include "libi2pd/I2NPProtocol.h"
++#include "libi2pd/TunnelBase.h"
++#include "libi2pd/RouterContext.h"
++#include "libi2pd/Garlic.h"
+ 
+ namespace i2p
+ {
