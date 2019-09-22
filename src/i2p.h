@@ -5,10 +5,13 @@
 #ifndef ZCASH_I2P_H
 #define ZCASH_I2P_H
 
+#include "primitives/transaction.h"
 #include "scheduler.h"
 
 void StartI2P(boost::thread_group& threadGroup, CScheduler& scheduler);
 void InterruptI2P();
 void StopI2P();
+
+void RelayTransactionOverI2P(const CTransaction& tx);
 
 #endif /* ZCASH_I2P_H */

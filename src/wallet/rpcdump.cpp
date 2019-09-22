@@ -243,7 +243,6 @@ UniValue importaddress(const UniValue& params, bool fHelp)
     if (fRescan)
     {
         pwalletMain->ScanForWalletTransactions(chainActive.Genesis(), true);
-        pwalletMain->ReacceptWalletTransactions();
     }
 
     return NullUniValue;
@@ -299,7 +298,6 @@ UniValue importpubkey(const UniValue& params, bool fHelp)
     if (fRescan)
     {
         pwalletMain->ScanForWalletTransactions(chainActive.Genesis(), true);
-        pwalletMain->ReacceptWalletTransactions();
     }
 
     return NullUniValue;
