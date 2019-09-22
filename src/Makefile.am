@@ -141,6 +141,7 @@ BITCOIN_CORE_H = \
   hash.h \
   httprpc.h \
   httpserver.h \
+  i2p.h \
   init.h \
   key.h \
   key_io.h \
@@ -247,6 +248,7 @@ libbitcoin_server_a_SOURCES = \
   deprecation.cpp \
   httprpc.cpp \
   httpserver.cpp \
+  i2p.cpp \
   init.cpp \
   dbwrapper.cpp \
   main.cpp \

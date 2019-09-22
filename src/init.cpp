@@ -17,6 +17,7 @@
 #include "consensus/validation.h"
 #include "httpserver.h"
 #include "httprpc.h"
+#include "i2p.h"
 #include "key.h"
 #ifdef ENABLE_MINING
 #include "key_io.h"
@@ -179,6 +180,7 @@ void Interrupt(boost::thread_group& threadGroup)
     InterruptHTTPRPC();
     InterruptRPC();
     InterruptREST();
+    InterruptI2P();
     InterruptTorControl();
     threadGroup.interrupt_all();
 }
@@ -210,6 +212,7 @@ void Shutdown()
     GenerateBitcoins(false, 0, Params());
 #endif
     StopNode();
+    StopI2P();
     StopTorControl();
     UnregisterNodeSignals(GetNodeSignals());
 
@@ -1597,6 +1600,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // recently added to the mempool, or have been added to or removed from the
     // chain.
     threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "txnotify", &ThreadNotifyWallets));
+
+    StartI2P(threadGroup, scheduler);
 
     if (GetBoolArg("-listenonion", DEFAULT_LISTEN_ONION))
         StartTorControl(threadGroup, scheduler);
