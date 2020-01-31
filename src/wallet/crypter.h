@@ -11,10 +11,12 @@
 #include "support/allocators/secure.h"
 #include "zcash/Address.hpp"
 
+#include <sodium.h>
+
 class uint256;
 
 const unsigned int WALLET_CRYPTO_KEY_SIZE = 32;
-const unsigned int WALLET_CRYPTO_SALT_SIZE = 8;
+const unsigned int WALLET_CRYPTO_SALT_SIZE = crypto_pwhash_SALTBYTES;
 
 /**
  * Private key encryption is done based on a CMasterKey,
@@ -22,14 +24,97 @@ const unsigned int WALLET_CRYPTO_SALT_SIZE = 8;
  * 
  * CMasterKeys are encrypted using AES-256-CBC using a key
  * derived using derivation method nDerivationMethod
- * (0 == EVP_sha512()) and derivation iterations nDeriveIterations.
- * vchOtherDerivationParameters is provided for alternative algorithms
- * which may require more parameters (such as scrypt).
+ * (0 == Argon2id()) and derivation iterations nDeriveIterations.
+ * otherDerivationParameters stores parameters specific to the
+ * derivation method.
  * 
  * Wallet Private Keys are then encrypted using AES-256-CBC
  * with the double-sha256 of the public key as the IV, and the
  * master key's key as the encryption key (see keystore.[ch]).
  */
+
+class UnknownDerivationParameters
+{
+public:
+    std::vector<unsigned char> vchParameters;
+
+    UnknownDerivationParameters() {}
+};
+
+class Argon2idParameters
+{
+public:
+    //! Memory usage in kibibytes
+    uint32_t memlimit;
+    //! Number of threads and compute lanes
+    uint32_t parallelism;
+
+    Argon2idParameters();
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(memlimit);
+        READWRITE(parallelism);
+    }
+};
+
+typedef boost::variant<UnknownDerivationParameters, Argon2idParameters> DerivationParameters;
+
+class DerivationParametersToBytes : public boost::static_visitor<std::vector<unsigned char>>
+{
+private:
+    int nType;
+    int nVersion;
+
+public:
+    DerivationParametersToBytes(int type, int version) : nType(type), nVersion(version) {}
+
+    std::vector<unsigned char> operator()(const UnknownDerivationParameters& params) const {
+        return params.vchParameters;
+    }
+
+    std::vector<unsigned char> operator()(const Argon2idParameters& params) const {
+        CDataStream ss(nType, nVersion);
+        ss << params;
+        return std::vector<unsigned char>(ss.begin(), ss.end());
+    }
+};
+
+class DeriveKeyFromPassphrase : public boost::static_visitor<bool>
+{
+private:
+    const SecureString& strKeyData;
+    const std::vector<unsigned char>& chSalt;
+    unsigned int nRounds;
+    unsigned char (&chKey)[WALLET_CRYPTO_KEY_SIZE];
+    unsigned char (&chIV)[WALLET_CRYPTO_KEY_SIZE];
+
+public:
+    DeriveKeyFromPassphrase(
+        const SecureString& keyData,
+        const std::vector<unsigned char>& salt,
+        unsigned int rounds,
+        unsigned char (&key)[WALLET_CRYPTO_KEY_SIZE],
+        unsigned char (&iv)[WALLET_CRYPTO_KEY_SIZE]) :
+            strKeyData(keyData), chSalt(salt), nRounds(rounds), chKey(key), chIV(iv) {}
+
+    bool operator()(const UnknownDerivationParameters& params) const;
+    bool operator()(const Argon2idParameters& params) const;
+};
+
+class TuneDerivationParameters : public boost::static_visitor<unsigned int>
+{
+private:
+    const unsigned int nDefaultRounds;
+
+public:
+    TuneDerivationParameters(unsigned int defaultRounds) : nDefaultRounds(defaultRounds) {}
+
+    unsigned int operator()(UnknownDerivationParameters& params) const;
+    unsigned int operator()(Argon2idParameters& params) const;
+};
 
 /** Master key for wallet encryption */
 class CMasterKey
@@ -37,13 +122,12 @@ class CMasterKey
 public:
     std::vector<unsigned char> vchCryptedKey;
     std::vector<unsigned char> vchSalt;
-    //! 0 = EVP_sha512()
-    //! 1 = scrypt()
+    //! 0 = Argon2id()
     unsigned int nDerivationMethod;
     unsigned int nDeriveIterations;
     //! Use this for more parameters to key derivation,
-    //! such as the various parameters to scrypt
-    std::vector<unsigned char> vchOtherDerivationParameters;
+    //! such as the various parameters to Argon2id
+    DerivationParameters parameters;
 
     ADD_SERIALIZE_METHODS;
 
@@ -53,16 +137,33 @@ public:
         READWRITE(vchSalt);
         READWRITE(nDerivationMethod);
         READWRITE(nDeriveIterations);
-        READWRITE(vchOtherDerivationParameters);
+
+        if (ser_action.ForRead()) {
+            std::vector<unsigned char> encodedParams;
+            READWRITE(encodedParams);
+            if (nDerivationMethod == 0) {
+                CDataStream ss(encodedParams, s.GetType(), s.GetVersion());
+                Argon2idParameters params;
+                ss >> params;
+                parameters = params;
+            } else {
+                UnknownDerivationParameters params;
+                params.vchParameters = encodedParams;
+                parameters = params;
+            }
+        } else {
+            auto encodedParams = boost::apply_visitor(
+                DerivationParametersToBytes(s.GetType(), s.GetVersion()),
+                parameters);
+            READWRITE(encodedParams);
+        }
     }
 
     CMasterKey()
     {
-        // 25000 rounds is just under 0.1 seconds on a 1.86 GHz Pentium M
-        // ie slightly lower than the lowest hardware we need bother supporting
-        nDeriveIterations = 25000;
+        nDeriveIterations = crypto_pwhash_argon2id_OPSLIMIT_SENSITIVE;
         nDerivationMethod = 0;
-        vchOtherDerivationParameters = std::vector<unsigned char>(0);
+        parameters = Argon2idParameters();
     }
 };
 
@@ -93,7 +194,7 @@ public:
         const SecureString &strKeyData,
         const std::vector<unsigned char>& chSalt,
         const unsigned int nRounds,
-        const unsigned int nDerivationMethod);
+        const DerivationParameters& params);
     bool Encrypt(const CKeyingMaterial& vchPlaintext, std::vector<unsigned char> &vchCiphertext);
     bool Decrypt(const std::vector<unsigned char>& vchCiphertext, CKeyingMaterial& vchPlaintext);
     bool SetKey(const CKeyingMaterial& chNewKey, const std::vector<unsigned char>& chNewIV);

@@ -15,29 +15,96 @@
 #include <openssl/aes.h>
 #include <openssl/evp.h>
 
+Argon2idParameters::Argon2idParameters()
+{
+    // Default to 1 GiB
+    memlimit = 1024 * 1024;
+
+    // libsodium does not support parallelism, but we store the field in case
+    // we decide to switch to a backend that does support it in future.
+    parallelism = 1;
+}
+
+bool DeriveKeyFromPassphrase::operator()(const UnknownDerivationParameters& params) const
+{
+    // Cannot derive a key from unknown parameters
+    return false;
+}
+
+bool DeriveKeyFromPassphrase::operator()(const Argon2idParameters& params) const
+{
+    unsigned char chOut[sizeof(chKey) + sizeof(chIV)];
+    if (crypto_pwhash_argon2id(
+        chOut, sizeof(chOut),
+        strKeyData.data(), strKeyData.size(),
+        chSalt.data(),
+        nRounds, ((size_t)params.memlimit) * 1024,
+        crypto_pwhash_argon2id_ALG_ARGON2ID13) != 0)
+    {
+        memory_cleanse(chOut, sizeof(chOut));
+        return false;
+    }
+
+    ::memcpy(chKey, chOut, sizeof(chKey));
+    ::memcpy(chIV, chOut + sizeof(chKey), sizeof(chIV));
+    memory_cleanse(chOut, sizeof(chOut));
+    return true;
+}
+
+unsigned int TuneDerivationParameters::operator()(UnknownDerivationParameters& params) const
+{
+    // Nothing to tune
+    return nDefaultRounds;
+}
+
+unsigned int TuneDerivationParameters::operator()(Argon2idParameters& params) const
+{
+    // Set up placeholders used during tuning.
+    SecureString keyData;
+    std::vector<unsigned char> salt(WALLET_CRYPTO_SALT_SIZE);
+    unsigned char key[WALLET_CRYPTO_KEY_SIZE];
+    unsigned char iv[WALLET_CRYPTO_KEY_SIZE];
+
+    // Time how long it takes for the default parameters.
+    unsigned int rounds = nDefaultRounds;
+    int64_t startTime = GetTimeMillis();
+    DeriveKeyFromPassphrase(keyData, salt, rounds, key, iv)(params);
+    auto durationMillis = GetTimeMillis() - startTime;
+
+    // We now want to find the parameters that take at most 1 second.
+    while (rounds > 1) {
+        // Re-scale
+        rounds = (rounds * 1000) / ((double)durationMillis);
+
+        // Re-measure
+        startTime = GetTimeMillis();
+        DeriveKeyFromPassphrase(keyData, salt, rounds, key, iv)(params);
+        durationMillis = GetTimeMillis() - startTime;
+
+        if (durationMillis > 500 && durationMillis <= 1000) {
+            // We are done!
+            return rounds;
+        }
+    }
+
+    // One round is still too long; reduce memlimit to reach 1 second.
+    params.memlimit = (params.memlimit * 1000) / ((double)durationMillis);
+    return 1;
+}
+
 bool CCrypter::SetKeyFromPassphrase(
     const SecureString& strKeyData,
     const std::vector<unsigned char>& chSalt,
     const unsigned int nRounds,
-    const unsigned int nDerivationMethod)
+    const DerivationParameters& params)
 {
     if (nRounds < 1 || chSalt.size() != WALLET_CRYPTO_SALT_SIZE)
         return false;
 
-    int i = 0;
-    if (nDerivationMethod == 0)
-        i = EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha512(), &chSalt[0],
-                          (unsigned char *)&strKeyData[0], strKeyData.size(), nRounds, chKey, chIV);
+    auto visitor = DeriveKeyFromPassphrase(strKeyData, chSalt, nRounds, chKey, chIV);
+    fKeySet = boost::apply_visitor(visitor, params);
 
-    if (i != (int)WALLET_CRYPTO_KEY_SIZE)
-    {
-        memory_cleanse(chKey, sizeof(chKey));
-        memory_cleanse(chIV, sizeof(chIV));
-        return false;
-    }
-
-    fKeySet = true;
-    return true;
+    return fKeySet;
 }
 
 bool CCrypter::SetKey(const CKeyingMaterial& chNewKey, const std::vector<unsigned char>& chNewIV)

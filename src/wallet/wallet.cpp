@@ -519,7 +519,7 @@ bool CWallet::Unlock(const SecureString& strWalletPassphrase)
                     strWalletPassphrase,
                     pMasterKey.second.vchSalt,
                     pMasterKey.second.nDeriveIterations,
-                    pMasterKey.second.nDerivationMethod))
+                    pMasterKey.second.parameters))
                 return false;
             if (!crypter.Decrypt(pMasterKey.second.vchCryptedKey, vMasterKey))
                 continue; // try another master key
@@ -552,30 +552,15 @@ bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase,
                     strOldWalletPassphrase,
                     pMasterKey.second.vchSalt,
                     pMasterKey.second.nDeriveIterations,
-                    pMasterKey.second.nDerivationMethod))
+                    pMasterKey.second.parameters))
                 return false;
             if (!crypter.Decrypt(pMasterKey.second.vchCryptedKey, vMasterKey))
                 return false;
             if (CCryptoKeyStore::Unlock(vMasterKey))
             {
-                int64_t nStartTime = GetTimeMillis();
-                crypter.SetKeyFromPassphrase(
-                    strNewWalletPassphrase,
-                    pMasterKey.second.vchSalt,
-                    pMasterKey.second.nDeriveIterations,
-                    pMasterKey.second.nDerivationMethod);
-                pMasterKey.second.nDeriveIterations = pMasterKey.second.nDeriveIterations * (100 / ((double)(GetTimeMillis() - nStartTime)));
-
-                nStartTime = GetTimeMillis();
-                crypter.SetKeyFromPassphrase(
-                    strNewWalletPassphrase,
-                    pMasterKey.second.vchSalt,
-                    pMasterKey.second.nDeriveIterations,
-                    pMasterKey.second.nDerivationMethod);
-                pMasterKey.second.nDeriveIterations = (pMasterKey.second.nDeriveIterations + pMasterKey.second.nDeriveIterations * 100 / ((double)(GetTimeMillis() - nStartTime))) / 2;
-
-                if (pMasterKey.second.nDeriveIterations < 25000)
-                    pMasterKey.second.nDeriveIterations = 25000;
+                pMasterKey.second.nDeriveIterations = boost::apply_visitor(
+                    TuneDerivationParameters(pMasterKey.second.nDeriveIterations),
+                    pMasterKey.second.parameters);
 
                 LogPrintf("Wallet passphrase changed to an nDeriveIterations of %i\n", pMasterKey.second.nDeriveIterations);
 
@@ -583,7 +568,7 @@ bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase,
                         strNewWalletPassphrase,
                         pMasterKey.second.vchSalt,
                         pMasterKey.second.nDeriveIterations,
-                        pMasterKey.second.nDerivationMethod))
+                        pMasterKey.second.parameters))
                     return false;
                 if (!crypter.Encrypt(vMasterKey, pMasterKey.second.vchCryptedKey))
                     return false;
@@ -1312,25 +1297,11 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
     kMasterKey.vchSalt.resize(WALLET_CRYPTO_SALT_SIZE);
     GetRandBytes(&kMasterKey.vchSalt[0], WALLET_CRYPTO_SALT_SIZE);
 
+    kMasterKey.nDeriveIterations = boost::apply_visitor(
+        TuneDerivationParameters(kMasterKey.nDeriveIterations),
+        kMasterKey.parameters);
+
     CCrypter crypter;
-    int64_t nStartTime = GetTimeMillis();
-    crypter.SetKeyFromPassphrase(
-        strWalletPassphrase,
-        kMasterKey.vchSalt,
-        25000,
-        kMasterKey.nDerivationMethod);
-    kMasterKey.nDeriveIterations = 2500000 / ((double)(GetTimeMillis() - nStartTime));
-
-    nStartTime = GetTimeMillis();
-    crypter.SetKeyFromPassphrase(
-        strWalletPassphrase,
-        kMasterKey.vchSalt,
-        kMasterKey.nDeriveIterations,
-        kMasterKey.nDerivationMethod);
-    kMasterKey.nDeriveIterations = (kMasterKey.nDeriveIterations + kMasterKey.nDeriveIterations * 100 / ((double)(GetTimeMillis() - nStartTime))) / 2;
-
-    if (kMasterKey.nDeriveIterations < 25000)
-        kMasterKey.nDeriveIterations = 25000;
 
     LogPrintf("Encrypting Wallet with an nDeriveIterations of %i\n", kMasterKey.nDeriveIterations);
 
@@ -1338,7 +1309,7 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
             strWalletPassphrase,
             kMasterKey.vchSalt,
             kMasterKey.nDeriveIterations,
-            kMasterKey.nDerivationMethod))
+            kMasterKey.parameters))
         return false;
     if (!crypter.Encrypt(vMasterKey, kMasterKey.vchCryptedKey))
         return false;
