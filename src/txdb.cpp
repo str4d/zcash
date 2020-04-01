@@ -456,7 +456,9 @@ bool CBlockTreeDB::ReadFlag(const std::string &name, bool &fValue) {
     return true;
 }
 
-bool CBlockTreeDB::LoadBlockIndexGuts(std::function<CBlockIndex*(const uint256&)> insertBlockIndex)
+bool CBlockTreeDB::LoadBlockIndexGuts(
+    std::function<CBlockIndex*(const uint256&)> insertBlockIndex,
+    const CChainParams& chainParams)
 {
     boost::scoped_ptr<CDBIterator> pcursor(NewIterator());
 
@@ -479,7 +481,7 @@ bool CBlockTreeDB::LoadBlockIndexGuts(std::function<CBlockIndex*(const uint256&)
                 pindexNew->hashSproutAnchor     = diskindex.hashSproutAnchor;
                 pindexNew->nVersion       = diskindex.nVersion;
                 pindexNew->hashMerkleRoot = diskindex.hashMerkleRoot;
-                pindexNew->hashFinalSaplingRoot   = diskindex.hashFinalSaplingRoot;
+                pindexNew->hashLightClientRoot  = diskindex.hashLightClientRoot;
                 pindexNew->nTime          = diskindex.nTime;
                 pindexNew->nBits          = diskindex.nBits;
                 pindexNew->nNonce         = diskindex.nNonce;
@@ -489,6 +491,8 @@ bool CBlockTreeDB::LoadBlockIndexGuts(std::function<CBlockIndex*(const uint256&)
                 pindexNew->nTx            = diskindex.nTx;
                 pindexNew->nSproutValue   = diskindex.nSproutValue;
                 pindexNew->nSaplingValue  = diskindex.nSaplingValue;
+                pindexNew->hashFinalSaplingRoot = diskindex.hashFinalSaplingRoot;
+                pindexNew->hashChainHistoryRoot = diskindex.hashChainHistoryRoot;
 
                 // Consistency checks
                 auto header = pindexNew->GetBlockHeader();
@@ -497,6 +501,21 @@ bool CBlockTreeDB::LoadBlockIndexGuts(std::function<CBlockIndex*(const uint256&)
                        diskindex.ToString(),  pindexNew->ToString());
                 if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, Params().GetConsensus()))
                     return error("LoadBlockIndex(): CheckProofOfWork failed: %s", pindexNew->ToString());
+
+                // ZIP 221 consistency checks
+                if (chainParams.GetConsensus().NetworkUpgradeActive(pindexNew->nHeight, Consensus::UPGRADE_HEARTWOOD)) {
+                    if (pindexNew->hashLightClientRoot != pindexNew->hashChainHistoryRoot) {
+                        return error(
+                            "LoadBlockIndex(): block index inconsistency detected (hashLightClientRoot != hashChainHistoryRoot): %s",
+                            pindexNew->ToString());
+                    }
+                } else {
+                    if (pindexNew->hashLightClientRoot != pindexNew->hashFinalSaplingRoot) {
+                        return error(
+                            "LoadBlockIndex(): block index inconsistency detected (hashLightClientRoot != hashFinalSaplingRoot): %s",
+                            pindexNew->ToString());
+                    }
+                }
 
                 pcursor->Next();
             } else {
