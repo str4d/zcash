@@ -12,8 +12,6 @@
 #include <string>
 #include <vector>
 #include <boost/foreach.hpp>
-#include <openssl/aes.h>
-#include <openssl/evp.h>
 
 Argon2idParameters::Argon2idParameters()
 {
@@ -63,7 +61,7 @@ unsigned int TuneDerivationParameters::operator()(Argon2idParameters& params) co
     SecureString keyData;
     std::vector<unsigned char> salt(WALLET_CRYPTO_SALT_SIZE);
     unsigned char key[WALLET_CRYPTO_KEY_SIZE];
-    unsigned char iv[WALLET_CRYPTO_KEY_SIZE];
+    unsigned char iv[WALLET_CRYPTO_NONCE_SIZE];
 
     // Time how long it takes for the default parameters.
     unsigned int rounds = nDefaultRounds;
@@ -109,7 +107,7 @@ bool CCrypter::SetKeyFromPassphrase(
 
 bool CCrypter::SetKey(const CKeyingMaterial& chNewKey, const std::vector<unsigned char>& chNewIV)
 {
-    if (chNewKey.size() != WALLET_CRYPTO_KEY_SIZE || chNewIV.size() != WALLET_CRYPTO_KEY_SIZE)
+    if (chNewKey.size() != WALLET_CRYPTO_KEY_SIZE || chNewIV.size() != WALLET_CRYPTO_NONCE_SIZE)
         return false;
 
     memcpy(&chKey[0], &chNewKey[0], sizeof chKey);
@@ -125,23 +123,21 @@ bool CCrypter::Encrypt(const CKeyingMaterial& vchPlaintext, std::vector<unsigned
         return false;
 
     // max ciphertext len for a n bytes of plaintext is
-    // n + AES_BLOCK_SIZE - 1 bytes
+    // n + crypto_aead_xchacha20poly1305_ietf_ABYTES
     int nLen = vchPlaintext.size();
-    int nCLen = nLen + AES_BLOCK_SIZE, nFLen = 0;
+    unsigned long long nCLen = nLen + crypto_aead_xchacha20poly1305_ietf_ABYTES;
     vchCiphertext = std::vector<unsigned char> (nCLen);
 
-    bool fOk = true;
+    if (crypto_aead_xchacha20poly1305_ietf_encrypt(
+        vchCiphertext.data(), &nCLen,
+        vchPlaintext.data(), nLen,
+        nullptr, 0, // no "additional data"
+        nullptr, chIV, chKey
+    ) != 0) {
+        return false;
+    }
 
-    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    assert(ctx);
-    if (fOk) fOk = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, chKey, chIV) != 0;
-    if (fOk) fOk = EVP_EncryptUpdate(ctx, &vchCiphertext[0], &nCLen, &vchPlaintext[0], nLen) != 0;
-    if (fOk) fOk = EVP_EncryptFinal_ex(ctx, (&vchCiphertext[0]) + nCLen, &nFLen) != 0;
-    EVP_CIPHER_CTX_free(ctx);
-
-    if (!fOk) return false;
-
-    vchCiphertext.resize(nCLen + nFLen);
+    vchCiphertext.resize(nCLen);
     return true;
 }
 
@@ -150,24 +146,23 @@ bool CCrypter::Decrypt(const std::vector<unsigned char>& vchCiphertext, CKeyingM
     if (!fKeySet)
         return false;
 
-    // plaintext will always be equal to or lesser than length of ciphertext
+    // plaintext will always be less than length of ciphertext
     int nLen = vchCiphertext.size();
-    int nPLen = nLen, nFLen = 0;
+    unsigned long long nPLen = nLen;
 
     vchPlaintext = CKeyingMaterial(nPLen);
 
-    bool fOk = true;
+    if (crypto_aead_xchacha20poly1305_ietf_decrypt(
+        vchPlaintext.data(), &nPLen,
+        nullptr,
+        vchCiphertext.data(), nLen,
+        nullptr, 0, // no "additional data"
+        chIV, chKey
+    ) != 0) {
+        return false;
+    }
 
-    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    assert(ctx);
-    if (fOk) fOk = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, chKey, chIV) != 0;
-    if (fOk) fOk = EVP_DecryptUpdate(ctx, &vchPlaintext[0], &nPLen, &vchCiphertext[0], nLen) != 0;
-    if (fOk) fOk = EVP_DecryptFinal_ex(ctx, (&vchPlaintext[0]) + nPLen, &nFLen) != 0;
-    EVP_CIPHER_CTX_free(ctx);
-
-    if (!fOk) return false;
-
-    vchPlaintext.resize(nPLen + nFLen);
+    vchPlaintext.resize(nPLen);
     return true;
 }
 
@@ -175,8 +170,8 @@ bool CCrypter::Decrypt(const std::vector<unsigned char>& vchCiphertext, CKeyingM
 static bool EncryptSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext)
 {
     CCrypter cKeyCrypter;
-    std::vector<unsigned char> chIV(WALLET_CRYPTO_KEY_SIZE);
-    memcpy(&chIV[0], &nIV, WALLET_CRYPTO_KEY_SIZE);
+    std::vector<unsigned char> chIV(WALLET_CRYPTO_NONCE_SIZE);
+    memcpy(&chIV[0], &nIV, WALLET_CRYPTO_NONCE_SIZE);
     if (!cKeyCrypter.SetKey(vMasterKey, chIV))
         return false;
     return cKeyCrypter.Encrypt(*((const CKeyingMaterial*)&vchPlaintext), vchCiphertext);
@@ -185,8 +180,8 @@ static bool EncryptSecret(const CKeyingMaterial& vMasterKey, const CKeyingMateri
 static bool DecryptSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext)
 {
     CCrypter cKeyCrypter;
-    std::vector<unsigned char> chIV(WALLET_CRYPTO_KEY_SIZE);
-    memcpy(&chIV[0], &nIV, WALLET_CRYPTO_KEY_SIZE);
+    std::vector<unsigned char> chIV(WALLET_CRYPTO_NONCE_SIZE);
+    memcpy(&chIV[0], &nIV, WALLET_CRYPTO_NONCE_SIZE);
     if (!cKeyCrypter.SetKey(vMasterKey, chIV))
         return false;
     return cKeyCrypter.Decrypt(vchCiphertext, *((CKeyingMaterial*)&vchPlaintext));

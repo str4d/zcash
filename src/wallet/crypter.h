@@ -15,22 +15,28 @@
 
 class uint256;
 
-const unsigned int WALLET_CRYPTO_KEY_SIZE = 32;
+const unsigned int WALLET_CRYPTO_KEY_SIZE = crypto_aead_xchacha20poly1305_ietf_KEYBYTES;
+const unsigned int WALLET_CRYPTO_NONCE_SIZE = crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
 const unsigned int WALLET_CRYPTO_SALT_SIZE = crypto_pwhash_SALTBYTES;
 
 /**
  * Private key encryption is done based on a CMasterKey,
  * which holds a salt and random encryption key.
  * 
- * CMasterKeys are encrypted using AES-256-CBC using a key
- * derived using derivation method nDerivationMethod
+ * CMasterKeys are encrypted using XChaCha20Poly1305 from RFC 7539
+ * using a key derived using derivation method nDerivationMethod
  * (0 == Argon2id()) and derivation iterations nDeriveIterations.
  * otherDerivationParameters stores parameters specific to the
  * derivation method.
  * 
- * Wallet Private Keys are then encrypted using AES-256-CBC
- * with the double-sha256 of the public key as the IV, and the
+ * Wallet Private Keys are then encrypted using XChaCha20Poly1305
+ * with the first 24 bytes of the key fingerprint as the IV, and the
  * master key's key as the encryption key (see keystore.[ch]).
+ *
+ * The key fingerprint for each key type:
+ * - Transparent key: SHA256d of the public key
+ * - Sprout key: SHA256d of SproutPaymentAddress
+ * - Sapling key: ZIP 32 fingerprint of SaplingFullViewingKey
  */
 
 class UnknownDerivationParameters
@@ -89,7 +95,7 @@ private:
     const std::vector<unsigned char>& chSalt;
     unsigned int nRounds;
     unsigned char (&chKey)[WALLET_CRYPTO_KEY_SIZE];
-    unsigned char (&chIV)[WALLET_CRYPTO_KEY_SIZE];
+    unsigned char (&chIV)[WALLET_CRYPTO_NONCE_SIZE];
 
 public:
     DeriveKeyFromPassphrase(
@@ -97,7 +103,7 @@ public:
         const std::vector<unsigned char>& salt,
         unsigned int rounds,
         unsigned char (&key)[WALLET_CRYPTO_KEY_SIZE],
-        unsigned char (&iv)[WALLET_CRYPTO_KEY_SIZE]) :
+        unsigned char (&iv)[WALLET_CRYPTO_NONCE_SIZE]) :
             strKeyData(keyData), chSalt(salt), nRounds(rounds), chKey(key), chIV(iv) {}
 
     bool operator()(const UnknownDerivationParameters& params) const;
@@ -186,7 +192,7 @@ class CCrypter
 {
 private:
     unsigned char chKey[WALLET_CRYPTO_KEY_SIZE];
-    unsigned char chIV[WALLET_CRYPTO_KEY_SIZE];
+    unsigned char chIV[WALLET_CRYPTO_NONCE_SIZE];
     bool fKeySet;
 
 public:
