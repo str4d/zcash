@@ -32,6 +32,9 @@
 #include "librustzcash.h"
 
 CClientUIInterface uiInterface; // Declared but not defined in ui_interface.h
+
+// TODO: Initialize this properly
+TracingHandle* pTracingHandle = nullptr;
 ZCJoinSplit *pzcashParams;
 FastRandomContext insecure_rand_ctx(true);
 

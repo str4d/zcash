@@ -18,6 +18,7 @@ namespace boost
 class thread_group;
 } // namespace boost
 
+extern TracingHandle* pTracingHandle;
 extern ZCJoinSplit* pzcashParams;
 
 void StartShutdown();
