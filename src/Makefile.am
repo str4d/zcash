@@ -39,7 +39,7 @@ if ENABLE_WALLET
 LIBBITCOIN_WALLET=libbitcoin_wallet.a
 endif
 
-RUST_ENV_VARS = RUSTC="$(RUSTC)" TERM=dumb
+RUST_ENV_VARS = RUSTC="$(RUSTC)" TERM=dumb RUSTFLAGS="-Clinker-plugin-lto"
 RUST_BUILD_OPTS = --lib --release --target $(RUST_TARGET)
 
 rust_verbose = $(rust_verbose_@AM_V@)
