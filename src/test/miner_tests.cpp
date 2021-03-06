@@ -245,11 +245,10 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
             }
 
             for (auto soln : solns) {
-                if (!librustzcash_eh_isvalid(
-                    n, k,
-                    (unsigned char*)&ss[0], ss.size(),
-                    pblock->nNonce.begin(), pblock->nNonce.size(),
-                    soln.data(), soln.size())) continue;
+                rust::Slice<const uint8_t> input{(unsigned char*)&ss[0], ss.size()};
+                rust::Slice<const uint8_t> nonce{pblock->nNonce.begin(), pblock->nNonce.size()};
+                rust::Slice<const uint8_t> soln_r{soln.data(), soln.size()};
+                if (!librustzcash_eh_isvalid(n, k, input, nonce, soln_r)) continue;
                 pblock->nSolution = soln;
 
                 CValidationState state;

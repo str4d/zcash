@@ -13,7 +13,7 @@
 #include "test/test_bitcoin.h"
 #include "uint256.h"
 
-#include "librustzcash.h"
+#include <rust/bridge.h>
 
 #include <sstream>
 #include <set>
@@ -95,11 +95,11 @@ void TestEquihashValidator(unsigned int n, unsigned int k, const std::string &I,
     PrintSolution(strm, soln);
     BOOST_TEST_MESSAGE(strm.str());
 
-    bool isValid = librustzcash_eh_isvalid(
-        n, k,
-        (unsigned char*)&I[0], I.size(),
-        V.begin(), V.size(),
-        minimal.data(), minimal.size());
+    rust::Slice<const uint8_t> input{(unsigned char*)&I[0], I.size()};
+    rust::Slice<const uint8_t> nonce_r{V.begin(), V.size()};
+    rust::Slice<const uint8_t> soln_r{minimal.data(), minimal.size()};
+
+    bool isValid = librustzcash_eh_isvalid(n, k, input, nonce_r, soln_r);
     BOOST_CHECK(isValid == expected);
 }
 
@@ -213,22 +213,19 @@ BOOST_AUTO_TEST_CASE(validator_allbitsmatter) {
     size_t cBitLen { n/(k+1) };
     std::vector<unsigned char> sol_char = GetMinimalFromIndices(soln, cBitLen);
 
+    rust::Slice<const uint8_t> input{(unsigned char*)&I[0], I.size()};
+    rust::Slice<const uint8_t> nonce{V.begin(), V.size()};
+    rust::Slice<const uint8_t> good_soln{sol_char.data(), sol_char.size()};
+
     // Prove that the solution is valid.
-    BOOST_CHECK(librustzcash_eh_isvalid(
-        n, k,
-        (unsigned char*)&I[0], I.size(),
-        V.begin(), V.size(),
-        sol_char.data(), sol_char.size()));
+    BOOST_CHECK(librustzcash_eh_isvalid(n, k, input, nonce, good_soln));
 
     // Changing any single bit of the encoded solution should make it invalid.
     for (size_t i = 0; i < sol_char.size() * 8; i++) {
         std::vector<unsigned char> mutated = sol_char;
         mutated.at(i/8) ^= (1 << (i % 8));
-        BOOST_CHECK(!librustzcash_eh_isvalid(
-            n, k,
-            (unsigned char*)&I[0], I.size(),
-            V.begin(), V.size(),
-            mutated.data(), mutated.size()));
+        rust::Slice<const uint8_t> mutated_soln{mutated.data(), mutated.size()};
+        BOOST_CHECK(!librustzcash_eh_isvalid(n, k, input, nonce, mutated_soln));
     }
 }
 

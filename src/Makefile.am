@@ -29,6 +29,9 @@ LIBSECP256K1=secp256k1/libsecp256k1.la
 LIBUNIVALUE=univalue/libunivalue.la
 LIBZCASH=libzcash.a
 
+RUST_BRIDGE_H=rust/include/rust/bridge.h
+RUST_BRIDGE=zcash/rustzcash.rs.cc
+
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
 endif
@@ -69,6 +72,14 @@ cargo-build: $(CARGO_CONFIGURED)
 	$(RUST_ENV_VARS) $(CARGO) build $(RUST_BUILD_OPTS) $(rust_verbose) --manifest-path $(top_srcdir)/Cargo.toml
 
 $(LIBRUSTZCASH): cargo-build
+
+$(RUST_BRIDGE_H): rust/src/rustzcash.rs
+	$(AM_V_at)$(CXXBRIDGE) rust/src/rustzcash.rs -o $(RUST_BRIDGE_H)
+# Pick something we compile early on, that depends on the bridge.
+libbitcoin_server_a-pow.$(OBJEXT): $(RUST_BRIDGE_H)
+
+$(RUST_BRIDGE): rust/src/rustzcash.rs
+	$(AM_V_at)$(CXXBRIDGE) rust/src/rustzcash.rs -o $(RUST_BRIDGE)
 
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
 	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
@@ -530,6 +541,7 @@ zcash_tx_LDADD += $(BOOST_LIBS)
 
 # zcash protocol primitives #
 libzcash_a_SOURCES = \
+  $(RUST_BRIDGE) \
   zcash/IncrementalMerkleTree.cpp \
   zcash/NoteEncryption.cpp \
   zcash/Address.cpp \

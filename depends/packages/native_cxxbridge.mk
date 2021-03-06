@@ -7,6 +7,8 @@ $(package)_sha256_hash=ec47c18cffaedb56f31c9631e48950ac7f39012d0a4f9cc38536e7432
 $(package)_build_subdir=gen/cmd
 $(package)_dependencies=native_rust
 
+# TODO: Download and vendor dependencies.
+
 define $(package)_build_cmds
   cargo build --release
 endef

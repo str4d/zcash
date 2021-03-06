@@ -106,6 +106,14 @@ fn fixed_scalar_mult(from: &[u8; 32], p_g: &jubjub::SubgroupPoint) -> jubjub::Su
     p_g * f
 }
 
+#[cxx::bridge]
+mod ffi {
+    extern "Rust" {
+        fn librustzcash_eh_isvalid(n: u32, k: u32, input: &[u8], nonce: &[u8], soln: &[u8])
+            -> bool;
+    }
+}
+
 /// Loads the zk-SNARK parameters into memory and saves paths as necessary.
 /// Only called once.
 #[no_mangle]
@@ -514,24 +522,11 @@ pub extern "C" fn librustzcash_sapling_ka_derivepublic(
 
 /// Validates the provided Equihash solution against the given parameters, input
 /// and nonce.
-#[no_mangle]
-pub extern "C" fn librustzcash_eh_isvalid(
-    n: u32,
-    k: u32,
-    input: *const c_uchar,
-    input_len: size_t,
-    nonce: *const c_uchar,
-    nonce_len: size_t,
-    soln: *const c_uchar,
-    soln_len: size_t,
-) -> bool {
-    if (k >= n) || (n % 8 != 0) || (soln_len != (1 << k) * ((n / (k + 1)) as usize + 1) / 8) {
+fn librustzcash_eh_isvalid(n: u32, k: u32, input: &[u8], nonce: &[u8], soln: &[u8]) -> bool {
+    if (k >= n) || (n % 8 != 0) || (soln.len() != (1 << k) * ((n / (k + 1)) as usize + 1) / 8) {
         return false;
     }
-    let rs_input = unsafe { slice::from_raw_parts(input, input_len) };
-    let rs_nonce = unsafe { slice::from_raw_parts(nonce, nonce_len) };
-    let rs_soln = unsafe { slice::from_raw_parts(soln, soln_len) };
-    equihash::is_valid_solution(n, k, rs_input, rs_nonce, rs_soln).is_ok()
+    equihash::is_valid_solution(n, k, input, nonce, soln).is_ok()
 }
 
 /// Creates a Sapling verification context. Please free this when you're done.

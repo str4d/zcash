@@ -14,6 +14,7 @@
 #include "uint256.h"
 
 #include <librustzcash.h>
+#include <rust/bridge.h>
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -113,11 +114,11 @@ bool CheckEquihashSolution(const CBlockHeader *pblock, const Consensus::Params& 
     CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
     ss << I;
 
-    return librustzcash_eh_isvalid(
-        n, k,
-        (unsigned char*)&ss[0], ss.size(),
-        pblock->nNonce.begin(), pblock->nNonce.size(),
-        pblock->nSolution.data(), pblock->nSolution.size());
+    rust::Slice<const uint8_t> input{(unsigned char*)&ss[0], ss.size()};
+    rust::Slice<const uint8_t> nonce{pblock->nNonce.begin(), pblock->nNonce.size()};
+    rust::Slice<const uint8_t> soln{pblock->nSolution.data(), pblock->nSolution.size()};
+
+    return librustzcash_eh_isvalid(n, k, input, nonce, soln);
 }
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)

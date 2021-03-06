@@ -79,6 +79,8 @@ Makefile
 .cargo/.configured-for-*
 .cargo/config
 target/
+src/rust/include/rust/bridge.h
+src/zcash/rustzcash.rs.cc
 
 # Unit-tests
 Makefile.test
