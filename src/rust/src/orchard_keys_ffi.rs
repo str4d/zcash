@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::io::{Read, Write};
 use std::slice;
 use tracing::error;
@@ -5,7 +6,10 @@ use tracing::error;
 use orchard::keys::{DiversifierIndex, FullViewingKey, IncomingViewingKey, SpendingKey};
 use orchard::Address;
 
-use crate::streams_ffi::{CppStreamReader, CppStreamWriter, ReadCb, StreamObj, WriteCb};
+use crate::{
+    streams_ffi::{CppStreamReader, CppStreamWriter, ReadCb, StreamObj, WriteCb},
+    wallet::WalletAddress,
+};
 
 //
 // Addresses
@@ -22,6 +26,19 @@ pub extern "C" fn orchard_address_clone(addr: *const Address) -> *mut Address {
 pub extern "C" fn orchard_address_free(addr: *mut Address) {
     if !addr.is_null() {
         drop(unsafe { Box::from_raw(addr) });
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn orchard_address_lt(a0: *const Address, a1: *const Address) -> bool {
+    let a0 = unsafe { a0.as_ref() };
+    let a1 = unsafe { a1.as_ref() };
+    if a0.is_some() == a1.is_some() {
+        a0.zip(a1)
+            .map(|(a0, a1)| WalletAddress::bytes_cmp(a0, a1) == Ordering::Less)
+            .unwrap_or(false)
+    } else {
+        a0.is_none()
     }
 }
 
