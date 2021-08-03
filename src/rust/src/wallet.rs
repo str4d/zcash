@@ -2,16 +2,18 @@ use incrementalmerkletree::{bridgetree::BridgeTree, Frontier, Tree};
 use libc::c_uchar;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::slice;
 use tracing::error;
 
 use zcash_primitives::{
     consensus::BlockHeight,
     transaction::{components::Amount, TxId},
+    zip32::AccountId,
 };
 
 use orchard::{
-    bundle::Authorized,
-    keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
+    bundle::{Authorization, Authorized},
+    keys::{FullViewingKey, IncomingViewingKey, SpendAuthorizingKey, SpendingKey},
     tree::MerkleHashOrchard,
     Address, Bundle, Note,
 };
@@ -37,6 +39,16 @@ pub struct DecryptedNote {
     ivk: IncomingViewingKey,
     note: Note,
     recipient: Address,
+    memo: [u8; 512],
+}
+
+/// A type used to pass note metadata across the FFI boundary
+#[repr(C)]
+pub struct NoteMetadata {
+    txid: [u8; 32],
+    action_idx: u32,
+    recipient: *const Address,
+    note_value: i64,
     memo: [u8; 512],
 }
 
@@ -80,6 +92,7 @@ struct KeyStore {
     payment_addresses: BTreeMap<WalletAddress, IncomingViewingKey>,
     viewing_keys: BTreeMap<IncomingViewingKey, FullViewingKey>,
     spending_keys: BTreeMap<FullViewingKey, SpendingKey>,
+    accounts: BTreeMap<AccountId, FullViewingKey>,
 }
 
 impl KeyStore {
@@ -88,6 +101,7 @@ impl KeyStore {
             payment_addresses: BTreeMap::new(),
             viewing_keys: BTreeMap::new(),
             spending_keys: BTreeMap::new(),
+            accounts: BTreeMap::new(),
         }
     }
 
@@ -96,10 +110,18 @@ impl KeyStore {
         self.viewing_keys.insert(ivk, fvk);
     }
 
-    pub fn add_spending_key(&mut self, sk: SpendingKey) {
+    pub fn add_spending_key(
+        &mut self,
+        seed: &[u8],
+        coin_type: u32,
+        account_id: AccountId,
+    ) -> Result<FullViewingKey, orchard::zip32::Error> {
+        let sk = SpendingKey::from_zip32_seed(seed, coin_type, account_id.into())?;
         let fvk = FullViewingKey::from(&sk);
+        self.spending_keys.insert(fvk.clone(), sk);
         self.add_full_viewing_key(fvk.clone());
-        self.spending_keys.insert(fvk, sk);
+        self.accounts.insert(account_id, fvk.clone());
+        Ok(fvk)
     }
 
     pub fn add_raw_address(&mut self, addr: Address, ivk: IncomingViewingKey) {
@@ -124,6 +146,8 @@ pub struct Wallet {
     key_store: KeyStore,
     witness_tree: BridgeTree<MerkleHashOrchard, MERKLE_DEPTH>,
     wallet_txs: HashMap<TxId, WalletTx>,
+    locked_notes: HashSet<OutPoint>,
+    spent_notes: HashSet<OutPoint>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +163,8 @@ impl Wallet {
             last_observed: None,
             witness_tree: BridgeTree::new(MAX_CHECKPOINTS),
             wallet_txs: HashMap::new(),
+            locked_notes: HashSet::new(),
+            spent_notes: HashSet::new(),
         }
     }
 
@@ -247,6 +273,53 @@ impl Wallet {
             _ => false,
         };
     }
+
+    pub fn get_filtered_notes(
+        &self,
+        ivk: &IncomingViewingKey,
+        ignore_spent: bool,
+        ignore_locked: bool,
+        require_spending_key: bool,
+    ) -> Vec<(OutPoint, DecryptedNote)> {
+        self.wallet_txs
+            .values()
+            .flat_map(|wallet_tx| {
+                wallet_tx
+                    .decrypted_notes
+                    .iter()
+                    .filter_map(move |(idx, dnote)| {
+                        let outpoint = OutPoint {
+                            txid: wallet_tx.txid,
+                            action_idx: *idx,
+                        };
+
+                        if (ignore_spent && self.spent_notes.contains(&outpoint))
+                            || (ignore_locked && self.locked_notes.contains(&outpoint))
+                            || (require_spending_key
+                                && !self.key_store.spending_key_for_ivk(&dnote.ivk).is_some())
+                        {
+                            None
+                        } else {
+                            if &dnote.ivk == ivk {
+                                Some((outpoint, (*dnote).clone()))
+                            } else {
+                                None
+                            }
+                        }
+                    })
+            })
+            .collect()
+    }
+
+    /// Select the spending keys known to this wallet that correspond to
+    /// the notes being spent in the associated bundle's actions.
+    pub fn select_signing_keys<A: Authorization, V>(
+        &self,
+        _bundle: &Bundle<A, V>,
+    ) -> Vec<SpendAuthorizingKey> {
+        // TODO
+        vec![]
+    }
 }
 
 #[no_mangle]
@@ -320,11 +393,19 @@ pub extern "C" fn orchard_wallet_append_bundle_commitments(
 }
 
 #[no_mangle]
-pub extern "C" fn orchard_wallet_add_spending_key(wallet: *mut Wallet, sk: *const SpendingKey) {
+pub extern "C" fn orchard_wallet_add_spending_key(
+    wallet: *mut Wallet,
+    seed: *const u8,
+    seed_len: usize,
+    coin_type: u32,
+    account_id: u32,
+) {
     let wallet = unsafe { &mut *wallet };
-    let sk = unsafe { &*sk };
+    let seed = unsafe { slice::from_raw_parts(seed, seed_len) };
 
-    wallet.key_store.add_spending_key(*sk);
+    wallet
+        .key_store
+        .add_spending_key(seed, coin_type, AccountId::from(account_id));
 }
 
 #[no_mangle]
@@ -372,5 +453,40 @@ pub extern "C" fn orchard_wallet_tx_data_new() -> *mut Vec<usize> {
 pub extern "C" fn orchard_wallet_tx_data_free(tx_data: *mut Vec<usize>) {
     if !tx_data.is_null() {
         drop(unsafe { Box::from_raw(tx_data) });
+    }
+}
+
+pub type VecObj = std::ptr::NonNull<libc::c_void>;
+pub type PushCb = unsafe extern "C" fn(obj: Option<VecObj>, meta: NoteMetadata);
+
+#[no_mangle]
+pub extern "C" fn orchard_wallet_get_filtered_notes(
+    wallet: *const Wallet,
+    ivk: *const IncomingViewingKey,
+    ignore_spent: bool,
+    ignore_locked: bool,
+    require_spending_key: bool,
+    result: Option<VecObj>,
+    push_cb: Option<PushCb>,
+) {
+    let wallet = unsafe { &*wallet };
+    let ivk = unsafe { &*ivk };
+
+    for (outpoint, dnote) in
+        wallet.get_filtered_notes(ivk, ignore_spent, ignore_locked, require_spending_key)
+    {
+        let recipient = Box::new(dnote.recipient);
+        unsafe {
+            (push_cb.unwrap())(
+                result,
+                NoteMetadata {
+                    txid: outpoint.txid.as_ref().clone(),
+                    action_idx: outpoint.action_idx as u32,
+                    recipient: Box::into_raw(recipient),
+                    note_value: dnote.note.value().inner() as i64,
+                    memo: dnote.memo.clone(),
+                },
+            )
+        };
     }
 }

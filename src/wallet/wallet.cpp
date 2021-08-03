@@ -27,6 +27,7 @@
 #include "timedata.h"
 #include "utilmoneystr.h"
 #include "util/match.h"
+#include "zcash/Address.hpp"
 #include "zcash/JoinSplit.hpp"
 #include "zcash/Note.hpp"
 #include "crypter.h"
@@ -6055,6 +6056,7 @@ bool CWallet::HasSpendingKeys(const AddrSet& addrSet) const {
             return false;
         }
     }
+
     for (const auto& zaddr : addrSet.GetSaplingAddresses()) {
         if (!HaveSaplingSpendingKeyForAddress(zaddr)) {
             return false;
@@ -6076,8 +6078,9 @@ bool CWallet::HasSpendingKeys(const AddrSet& addrSet) const {
  * will be unmodified.
  */
 void CWallet::GetFilteredNotes(
-    std::vector<SproutNoteEntry>& sproutEntries,
-    std::vector<SaplingNoteEntry>& saplingEntries,
+    std::vector<SproutNoteEntry>& sproutEntriesRet,
+    std::vector<SaplingNoteEntry>& saplingEntriesRet,
+    std::vector<OrchardNoteMetadata>& orchardNotesRet,
     const std::optional<AddrSet>& noteFilter,
     int minDepth,
     int maxDepth,
@@ -6103,7 +6106,7 @@ void CWallet::GetFilteredNotes(
         }
 
         // Filter coinbase transactions that don't have Sapling outputs
-        if (wtx.IsCoinBase() && wtx.mapSaplingNoteData.empty()) {
+        if (wtx.IsCoinBase() && wtx.mapSaplingNoteData.empty() && true/* TODO ORCHARD */) {
             continue;
         }
 
@@ -6155,7 +6158,7 @@ void CWallet::GetFilteredNotes(
                         hSig,
                         (unsigned char) j);
 
-                sproutEntries.push_back(SproutNoteEntry {
+                sproutEntriesRet.push_back(SproutNoteEntry {
                     jsop, pa, plaintext.note(pa), plaintext.memo(), wtx.GetDepthInMainChain() });
 
             } catch (const note_decryption_failed &err) {
@@ -6202,9 +6205,21 @@ void CWallet::GetFilteredNotes(
             }
 
             auto note = notePt.note(nd.ivk).value();
-            saplingEntries.push_back(SaplingNoteEntry {
+            saplingEntriesRet.push_back(SaplingNoteEntry {
                 op, pa, note, notePt.memo(), wtx.GetDepthInMainChain() });
         }
+    }
+
+    orchardWallet.GetFilteredNotes(
+            orchardNotesRet,
+            noteFilter.has_value() ? std::optional(noteFilter.value().GetOrchardAddresses()) : std::nullopt,
+            ignoreSpent,
+            requireSpendingKey);
+
+    for (auto &orchardNoteMeta : orchardNotesRet) {
+        auto wtx = GetWalletTx(orchardNoteMeta.GetOutPoint().hash);
+        if (wtx)
+            orchardNoteMeta.SetConfirmations(wtx->GetDepthInMainChain());
     }
 }
 

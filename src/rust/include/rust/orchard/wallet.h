@@ -101,6 +101,40 @@ void orchard_wallet_add_raw_address(
         const OrchardRawAddressPtr* addr,
         const OrchardIncomingViewingKeyPtr* ivk);
 
+/**
+ * A C struct used to transfer note metadata information across the Rust FFI
+ * boundary. This must have the same in-memory representation as the
+ * `NoteMetadata` type in orchard_ffi/wallet.rs.
+ */
+struct RawOrchardNoteMetadata {
+    unsigned char txid[32];
+    uint32_t actionIdx;
+    OrchardRawAddressPtr* addr;
+    CAmount noteValue;
+    unsigned char memo[512];
+};
+
+typedef void (*push_callback_t)(void* resultVector, const RawOrchardNoteMetadata noteMeta);
+
+/**
+ * Finds notes that belong to the wallet that match any of the provided
+ * addresses, subject to the specified flags, and uses the provided callback to
+ * push RawOrchardNoteMetadata values corresponding to those notes on to the
+ * provided result vector. Note that the push_cb callback can perform any
+ * necessary conversion from a RawOrchardNoteMetadata value prior in addition
+ * to modifying the provided result vector.
+ */
+void orchard_wallet_get_filtered_notes(
+        const OrchardWalletPtr* wallet,
+        bool apply_filtering,
+        OrchardRawAddressPtr** addrs,
+        size_t addrs_len,
+        bool ignoreSpent,
+        bool requireSpendingKey,
+        void* resultVector,
+        push_callback_t push_cb
+        );
+
 #ifdef __cplusplus
 }
 #endif
