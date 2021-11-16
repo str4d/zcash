@@ -8,6 +8,8 @@ build_darwin_NM: = $(shell xcrun -f nm)
 build_darwin_INSTALL_NAME_TOOL:=$(shell xcrun -f install_name_tool)
 build_darwin_SHA256SUM = shasum -a 256
 build_darwin_DOWNLOAD = curl --location --fail --connect-timeout $(DOWNLOAD_CONNECT_TIMEOUT) --retry $(DOWNLOAD_RETRIES) -o
+# Authorization header is to enable downloading Homebrew LLVM package for M1.
+build_aarch64_darwin_DOWNLOAD = curl --location --fail --connect-timeout $(DOWNLOAD_CONNECT_TIMEOUT) --retry $(DOWNLOAD_RETRIES) -H "Authorization: Bearer QQ==" -o
 
 #darwin host on darwin builder. overrides darwin host preferences.
 darwin_CC=$(shell xcrun -f clang) -mmacosx-version-min=$(OSX_MIN_VERSION) -fvisibility=hidden -fvisibility-inlines-hidden --sysroot $(shell xcrun --show-sdk-path)

@@ -9,6 +9,8 @@ $(package)_file_name_freebsd=rust-$($(package)_version)-x86_64-unknown-freebsd.t
 $(package)_sha256_hash_freebsd=83f9c49b6e9025b712fc5d65e49f1b6ad959966534cd39c8dc2ce2c85a6ca484
 $(package)_file_name_aarch64_linux=rust-$($(package)_version)-aarch64-unknown-linux-gnu.tar.gz
 $(package)_sha256_hash_aarch64_linux=ab5da30a3de5433e26cbc74c56b9d97b569769fc2e456fc54378adc8baaee4f0
+$(package)_file_name_aarch64_darwin=rust-$($(package)_version)-aarch64-apple-darwin.tar.gz
+$(package)_sha256_hash_aarch64_darwin=5449ae915982967bae97746ce8bea30844f9ab40b4ee4da392b9997e0e7b2926
 
 # Mapping from GCC canonical hosts to Rust targets
 # If a mapping is not present, we assume they are identical, unless $host_os is
