@@ -12,22 +12,23 @@ $(package)_sha256_hash_aarch64_linux=ab5da30a3de5433e26cbc74c56b9d97b569769fc2e4
 
 # Mapping from GCC canonical hosts to Rust targets
 # If a mapping is not present, we assume they are identical, unless $host_os is
-# "darwin", in which case we assume x86_64-apple-darwin.
+# "darwin", in which case we assume $(host_arch)-apple-darwin.
 $(package)_rust_target_x86_64-pc-linux-gnu=x86_64-unknown-linux-gnu
 $(package)_rust_target_x86_64-w64-mingw32=x86_64-pc-windows-gnu
 
 # Mapping from Rust targets to SHA-256 hashes
+$(package)_rust_std_sha256_hash_aarch64-apple-darwin=e70bd0c56f8f716238a1395c54dd9d993a3168e2764e404dc65553babf7aa127
 $(package)_rust_std_sha256_hash_aarch64-unknown-linux-gnu=81dbd37919f631f962ac0798111803eb8f06ffde608f0e5dd3682d701cf5566d
 $(package)_rust_std_sha256_hash_x86_64-apple-darwin=959af8bafbc9f3916a1d1111d7378fdd7aa459410cdd2d3bbfc2d9d9a6db0683
 $(package)_rust_std_sha256_hash_x86_64-pc-windows-gnu=9a67ae84e9e75efb57eeeab617e32379a555de336a30bb74a476e575cd38f63a
 $(package)_rust_std_sha256_hash_x86_64-unknown-freebsd=cf5e4303dd7c3b70a738a2336097c9f2189c8b702a89a8c453d83ac0dee4602c
 
 define rust_target
-$(if $($(1)_rust_target_$(2)),$($(1)_rust_target_$(2)),$(if $(findstring darwin,$(3)),x86_64-apple-darwin,$(if $(findstring freebsd,$(3)),x86_64-unknown-freebsd,$(2))))
+$(if $($(1)_rust_target_$(2)),$($(1)_rust_target_$(2)),$(if $(findstring darwin,$(3)),$(4)-apple-darwin,$(if $(findstring freebsd,$(3)),x86_64-unknown-freebsd,$(2))))
 endef
 
 ifneq ($(canonical_host),$(build))
-$(package)_rust_target=$(call rust_target,$(package),$(canonical_host),$(host_os))
+$(package)_rust_target=$(call rust_target,$(package),$(canonical_host),$(host_os),$(host_arch))
 $(package)_exact_file_name=rust-std-$($(package)_version)-$($(package)_rust_target).tar.gz
 $(package)_exact_sha256_hash=$($(package)_rust_std_sha256_hash_$($(package)_rust_target))
 $(package)_build_subdir=buildos
