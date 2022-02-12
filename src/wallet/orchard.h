@@ -50,6 +50,8 @@ class OrchardWallet
 private:
     std::unique_ptr<OrchardWalletPtr, decltype(&orchard_wallet_free)> inner;
 
+    friend class ::orchard::UnauthorizedBundle;
+
 public:
     OrchardWallet() : inner(orchard_wallet_new(), orchard_wallet_free) {}
 

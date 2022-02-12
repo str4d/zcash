@@ -17,7 +17,7 @@ use zcash_primitives::transaction::{
     Authorization, TransactionData, TxVersion,
 };
 
-use crate::{transaction_ffi::PrecomputedTxParts, ORCHARD_PK};
+use crate::{transaction_ffi::PrecomputedTxParts, wallet::Wallet, ORCHARD_PK};
 
 #[no_mangle]
 pub extern "C" fn orchard_builder_new(
@@ -95,15 +95,18 @@ pub extern "C" fn orchard_unauthorized_bundle_free(
 #[no_mangle]
 pub extern "C" fn orchard_unauthorized_bundle_prove_and_sign(
     bundle: *mut Bundle<InProgress<Unproven, Unauthorized>, Amount>,
+    wallet: *const Wallet,
     sighash: *const [u8; 32],
 ) -> *mut Bundle<Authorized, Amount> {
     let bundle = unsafe { Box::from_raw(bundle) };
+    let wallet = unsafe { wallet.as_ref() }.expect("Wallet pointer may not be null.");
     let sighash = unsafe { sighash.as_ref() }.expect("sighash pointer may not be null.");
     let pk = unsafe { ORCHARD_PK.as_ref() }.unwrap();
 
-    let res = bundle
-        .create_proof(pk)
-        .and_then(|b| b.apply_signatures(OsRng, *sighash, &[]));
+    let res = bundle.create_proof(pk).and_then(|b| {
+        let keys = wallet.select_signing_keys(&b);
+        b.apply_signatures(OsRng, *sighash, &keys)
+    });
 
     match res {
         Ok(signed) => {

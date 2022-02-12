@@ -7,6 +7,7 @@
 
 #include "rust/orchard.h"
 #include "rust/orchard/keys.h"
+#include "rust/orchard/wallet.h"
 #include "rust/transaction.h"
 
 #ifdef __cplusplus
@@ -59,6 +60,7 @@ void orchard_unauthorized_bundle_free(OrchardUnauthorizedBundlePtr* bundle);
 /// `bundle` is always freed by this method.
 OrchardBundlePtr* orchard_unauthorized_bundle_prove_and_sign(
     OrchardUnauthorizedBundlePtr* bundle,
+    const OrchardWalletPtr* wallet,
     const unsigned char* sighash);
 
 /// Calculates a ZIP 244 shielded signature digest for the given under-construction

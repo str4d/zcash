@@ -12,6 +12,7 @@
 #include "random.h"
 #include "script/script.h"
 #include "script/standard.h"
+#include "wallet/orchard.h"
 #include "uint256.h"
 #include "zcash/Address.hpp"
 #include "zcash/IncrementalMerkleTree.hpp"
@@ -117,7 +118,7 @@ public:
     /// this bundle must be discarded and a new bundle built. Subsequent usage of this
     /// object in any way will cause an exception. This emulates Rust's compile-time
     /// move semantics at runtime.
-    std::optional<OrchardBundle> ProveAndSign(uint256 sighash);
+    std::optional<OrchardBundle> ProveAndSign(const OrchardWallet& wallet, uint256 sighash);
 };
 
 } // namespace orchard

@@ -73,6 +73,7 @@ std::optional<UnauthorizedBundle> Builder::Build() {
 }
 
 std::optional<OrchardBundle> UnauthorizedBundle::ProveAndSign(
+    const OrchardWallet& wallet,
     uint256 sighash)
 {
     if (!inner) {
@@ -80,7 +81,7 @@ std::optional<OrchardBundle> UnauthorizedBundle::ProveAndSign(
     }
 
     auto authorizedBundle = orchard_unauthorized_bundle_prove_and_sign(
-        inner.release(), sighash.begin());
+        inner.release(), wallet.inner.get(), sighash.begin());
     if (authorizedBundle == nullptr) {
         return std::nullopt;
     } else {
@@ -568,7 +569,7 @@ TransactionBuilderResult TransactionBuilder::Build()
     }
 
     if (orchardBundle.has_value()) {
-        auto authorizedBundle = orchardBundle.value().ProveAndSign(dataToBeSigned);
+        auto authorizedBundle = orchardBundle.value().ProveAndSign(wallet, dataToBeSigned);
         if (authorizedBundle.has_value()) {
             mtx.orchardBundle = authorizedBundle.value();
         } else {
