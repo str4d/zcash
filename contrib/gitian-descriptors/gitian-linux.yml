@@ -1,9 +1,10 @@
 ---
-name: "zcash-4.4.1"
+name: "zcash-4.6.0-1"
 enable_cache: true
 distro: "debian"
 suites:
 - "stretch"
+- "buster"
 architectures:
 - "amd64"
 packages:
@@ -17,6 +18,7 @@ packages:
 - "g++-multilib"
 - "git-core"
 - "libc6-dev"
+- "libtinfo5"
 - "libtool"
 - "libxml2"
 - "m4"

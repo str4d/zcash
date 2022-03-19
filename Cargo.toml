@@ -3,45 +3,59 @@ name = "librustzcash"
 description = "Rust FFI used by the zcashd binary. Not an official API."
 version = "0.2.0"
 authors = [
-    "Sean Bowe <ewillbefull@gmail.com>",
-    "Jack Grigg <jack@z.cash>",
-    "Jay Graber <jay@z.cash>",
-    "Simon Liu <simon@z.cash>"
+    "Sean Bowe <sean@electriccoin.co>",
+    "Jay Graber",
+    "Jack Grigg <jack@electriccoin.co>",
+    "Daira Hopwood <daira@electriccoin.co>",
+    "Ying Tong Lai <yingtong@electriccoin.co>",
+    "Simon Liu",
+    "Kris Nuttycombe <kris@electriccoin.co>",
+    "Larry Ruane <larry@electriccoin.co>",
+    "Steven Smith <steven@electriccoin.co>"
 ]
 homepage = "https://github.com/zcash/zcash"
 repository = "https://github.com/zcash/zcash"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 edition = "2018"
+rust-version = "1.59"
 
 [lib]
 name = "rustzcash"
 path = "src/rust/src/rustzcash.rs"
 crate-type = ["staticlib"]
 
+[[bin]]
+name = "zcashd-wallet-tool"
+path = "src/rust/bin/wallet_tool.rs"
+
 [dependencies]
-bellman = "0.10"
-blake2b_simd = "0.5"
-blake2s_simd = "0.5"
-bls12_381 = "0.5"
+bellman = "0.11"
+blake2b_simd = "1"
+blake2s_simd = "1"
+bls12_381 = "0.6"
 byteorder = "1"
-group = "0.10"
-incrementalmerkletree = "0.1"
+group = "0.11"
+incrementalmerkletree = "0.2"
 libc = "0.2"
-jubjub = "0.7"
+jubjub = "0.8"
+memuse = "0.2"
 nonempty = "0.7"
-orchard = "0.0"
+orchard = "=0.1.0-beta.1"
+secp256k1 = "0.20"
 subtle = "2.2"
 rand_core = "0.6"
 tracing = "0.1"
 tracing-core = "0.1"
-tracing-appender = "0.1"
+tracing-appender = "0.2"
 zcash_address = "0.0"
+zcash_encoding = "0.0"
 zcash_history = "0.2"
-zcash_note_encryption = "0.0"
-zcash_primitives = "0.5"
+zcash_note_encryption = "0.1"
+zcash_primitives = { version = "0.5", features = ["transparent-inputs"] }
 zcash_proofs = "0.5"
-ed25519-zebra = "2.2.0"
+ed25519-zebra = "3"
+zeroize = "1.4.2"
 
 # Metrics
 hyper = { version = "=0.14.2", default-features = false, features = ["server", "tcp", "http1"] }
@@ -51,10 +65,20 @@ metrics-exporter-prometheus = "0.6"
 thiserror = "1"
 tokio = { version = "1.0", features = ["rt", "net", "time", "macros"] }
 
+# Wallet tool
+# (also depends on thiserror, tracing, and tracing-subscriber with "env-filter" and "fmt" features)
+anyhow = "1.0"
+backtrace = "0.3"
+clearscreen = "1.0"
+gumdrop = "0.8"
+rand = "0.8"
+secrecy = "0.8"
+time = { version = "0.3", features = ["formatting", "macros"] }
+
 [dependencies.tracing-subscriber]
-version = "0.2.12"
+version = "0.3"
 default-features = false
-features = ["ansi", "chrono", "env-filter"]
+features = ["ansi", "env-filter", "fmt", "time"]
 
 [profile.release]
 lto = true
@@ -62,13 +86,12 @@ panic = 'abort'
 codegen-units = 1
 
 [patch.crates-io]
-ed25519-zebra = { git = "https://github.com/ZcashFoundation/ed25519-zebra.git", rev = "d3512400227a362d08367088ffaa9bd4142a69c7" }
-halo2 = { git = "https://github.com/zcash/halo2.git", rev = "27c4187673a9c6ade13fbdbd4f20955530c22d7f" }
-incrementalmerkletree = { git = "https://github.com/zcash/incrementalmerkletree", rev = "b7bd6246122a6e9ace8edb51553fbf5228906cbb" }
-jubjub = { git = "https://github.com/zkcrypto/jubjub.git", rev = "96ab4162b83303378eae32a326b54d88b75bffc2" }
-orchard = { git = "https://github.com/zcash/orchard.git", rev = "d0baa18fc6105df4a7847de2b6dc50c5919b3123" }
-zcash_address = { git = "https://github.com/zcash/librustzcash.git", rev = "19a97f16945c68c33aedcc89f2a4f4d398658b05" }
-zcash_history = { git = "https://github.com/zcash/librustzcash.git", rev = "19a97f16945c68c33aedcc89f2a4f4d398658b05" }
-zcash_note_encryption = { git = "https://github.com/zcash/librustzcash.git", rev = "19a97f16945c68c33aedcc89f2a4f4d398658b05" }
-zcash_primitives = { git = "https://github.com/zcash/librustzcash.git", rev = "19a97f16945c68c33aedcc89f2a4f4d398658b05" }
-zcash_proofs = { git = "https://github.com/zcash/librustzcash.git", rev = "19a97f16945c68c33aedcc89f2a4f4d398658b05" }
+hdwallet = { git = "https://github.com/nuttycom/hdwallet", rev = "576683b9f2865f1118c309017ff36e01f84420c9" }
+incrementalmerkletree = { git = "https://github.com/zcash/incrementalmerkletree.git", rev = "62c33e4480a71170b02b9eb7d4b0160194f414ee" }
+orchard = { git = "https://github.com/zcash/orchard.git", rev = "f4587f790d7317df85a9ee77ce693a06ed6d8d02" }
+zcash_address = { git = "https://github.com/zcash/librustzcash.git", rev = "67cb63a5a6b1f2c4cf5a061dbe80e9a71477e289" }
+zcash_encoding = { git = "https://github.com/zcash/librustzcash.git", rev = "67cb63a5a6b1f2c4cf5a061dbe80e9a71477e289" }
+zcash_history = { git = "https://github.com/zcash/librustzcash.git", rev = "67cb63a5a6b1f2c4cf5a061dbe80e9a71477e289" }
+zcash_note_encryption = { git = "https://github.com/zcash/librustzcash.git", rev = "67cb63a5a6b1f2c4cf5a061dbe80e9a71477e289" }
+zcash_primitives = { git = "https://github.com/zcash/librustzcash.git", rev = "67cb63a5a6b1f2c4cf5a061dbe80e9a71477e289" }
+zcash_proofs = { git = "https://github.com/zcash/librustzcash.git", rev = "67cb63a5a6b1f2c4cf5a061dbe80e9a71477e289" }

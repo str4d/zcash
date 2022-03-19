@@ -11,6 +11,7 @@
 #include "primitives/transaction.h"
 #include "proof_verifier.h"
 #include "transaction_builder.h"
+#include "utiltest.h"
 #include "zcash/JoinSplit.hpp"
 #include "zcash/Note.hpp"
 #include "zcash/NoteEncryption.hpp"
@@ -221,11 +222,11 @@ TEST(Joinsplit, HSig)
 /*
 // by Taylor Hornby
 
-import pyblake2
+import hashlib
 import binascii
 
 def hSig(randomSeed, nf1, nf2, joinSplitPubKey):
-    return pyblake2.blake2b(
+    return hashlib.blake2b(
         data=(randomSeed + nf1 + nf2 + joinSplitPubKey),
         digest_size=32,
         person=b"ZcashComputehSig"
@@ -309,6 +310,8 @@ void increment_note_witnesses(
 
 TEST(Joinsplit, FullApiTest)
 {
+    LoadProofParameters();
+
     {
         std::vector<SproutWitness> witnesses;
         SproutMerkleTree tree;

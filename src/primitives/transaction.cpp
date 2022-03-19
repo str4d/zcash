@@ -81,6 +81,11 @@ std::string SaplingOutPoint::ToString() const
     return strprintf("SaplingOutPoint(%s, %u)", hash.ToString().substr(0, 10), n);
 }
 
+std::string OrchardOutPoint::ToString() const
+{
+    return strprintf("OrchardOutPoint(%s, %u)", hash.ToString().substr(0, 10), n);
+}
+
 CTxIn::CTxIn(COutPoint prevoutIn, CScript scriptSigIn, uint32_t nSequenceIn)
 {
     prevout = prevoutIn;
@@ -424,46 +429,4 @@ std::string CTransaction::ToString() const
     for (unsigned int i = 0; i < vout.size(); i++)
         str += "    " + vout[i].ToString() + "\n";
     return str;
-}
-
-/**
- * Returns the most recent supported transaction version and version group id,
- * as of the specified activation height and active features.
- */
-TxVersionInfo CurrentTxVersionInfo(
-    const Consensus::Params& consensus,
-    int nHeight,
-    bool requireSprout)
-{
-    if (consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_ZFUTURE)) {
-        return {
-            .fOverwintered =   true,
-            .nVersionGroupId = ZFUTURE_VERSION_GROUP_ID,
-            .nVersion =        ZFUTURE_TX_VERSION
-        };
-    } else if (consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_NU5) && !requireSprout) {
-        return {
-            .fOverwintered =   true,
-            .nVersionGroupId = ZIP225_VERSION_GROUP_ID,
-            .nVersion =        ZIP225_TX_VERSION
-        };
-    } else if (consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING)) {
-        return {
-            .fOverwintered =   true,
-            .nVersionGroupId = SAPLING_VERSION_GROUP_ID,
-            .nVersion =        SAPLING_TX_VERSION
-        };
-    } else if (consensus.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_OVERWINTER)) {
-        return {
-            .fOverwintered =   true,
-            .nVersionGroupId = OVERWINTER_VERSION_GROUP_ID,
-            .nVersion =        OVERWINTER_TX_VERSION
-        };
-    } else {
-        return {
-            .fOverwintered =   false,
-            .nVersionGroupId = 0,
-            .nVersion =        CTransaction::SPROUT_MIN_CURRENT_VERSION
-        };
-    }
 }

@@ -5,25 +5,30 @@ use std::{
 };
 
 use libc::{c_char, c_void};
-use zcash_address::{unified, FromAddress, Network, ToAddress, ZcashAddress};
+use zcash_address::{
+    unified::{self, Container, Encoding},
+    FromAddress, Network, ToAddress, ZcashAddress,
+};
 use zcash_primitives::sapling;
 
 pub type UnifiedAddressObj = NonNull<c_void>;
+pub type AddOrchardReceiverCb =
+    unsafe extern "C" fn(ua: Option<UnifiedAddressObj>, orchard: *const orchard::Address) -> bool;
 pub type AddReceiverCb =
     unsafe extern "C" fn(ua: Option<UnifiedAddressObj>, raw: *const u8) -> bool;
 pub type UnknownReceiverCb = unsafe extern "C" fn(
     ua: Option<UnifiedAddressObj>,
-    typecode: u8,
+    typecode: u32,
     data: *const u8,
     len: usize,
 ) -> bool;
-pub type GetTypecodeCb = unsafe extern "C" fn(ua: Option<UnifiedAddressObj>, index: usize) -> u8;
+pub type GetTypecodeCb = unsafe extern "C" fn(ua: Option<UnifiedAddressObj>, index: usize) -> u32;
 pub type GetReceiverLenCb =
     unsafe extern "C" fn(ua: Option<UnifiedAddressObj>, index: usize) -> usize;
 pub type GetReceiverDataCb =
     unsafe extern "C" fn(ua: Option<UnifiedAddressObj>, index: usize, data: *mut u8, length: usize);
 
-fn network_from_cstr(network: *const c_char) -> Option<Network> {
+pub(crate) fn network_from_cstr(network: *const c_char) -> Option<Network> {
     match unsafe { CStr::from_ptr(network) }.to_str().unwrap() {
         "main" => Some(Network::Main),
         "test" => Some(Network::Test),
@@ -50,10 +55,12 @@ impl FromAddress for UnifiedAddressHelper {
 }
 
 impl UnifiedAddressHelper {
+    #[allow(clippy::too_many_arguments)]
     fn into_cpp(
         self,
         network: Network,
         ua_obj: Option<UnifiedAddressObj>,
+        orchard_cb: Option<AddOrchardReceiverCb>,
         sapling_cb: Option<AddReceiverCb>,
         p2sh_cb: Option<AddReceiverCb>,
         p2pkh_cb: Option<AddReceiverCb>,
@@ -69,29 +76,27 @@ impl UnifiedAddressHelper {
         }
 
         self.ua
-            .receivers()
+            .items()
             .into_iter()
             .map(|receiver| match receiver {
                 unified::Receiver::Orchard(data) => {
-                    // ZIP 316: Senders MUST reject Unified Addresses in which any
-                    // constituent address does not meet the validation requirements of
-                    // its Receiver Encoding.
-                    // TODO: Add this API to the orchard crate.
-                    // if let Err(e) = orchard::Address::from_bytes(data) {
-                    //     tracing::error!("{}", e);
-                    //     false
-                    // } else {
-                    {
+                    // ZIP 316: Consumers MUST reject Unified Addresses/Viewing Keys in
+                    // which any constituent Item does not meet the validation
+                    // requirements of its encoding.
+                    let addr = orchard::Address::from_raw_address_bytes(&data);
+                    if addr.is_none().into() {
+                        tracing::error!("Unified Address contains invalid Orchard receiver");
+                        false
+                    } else {
                         unsafe {
-                            // TODO: Replace with Orchard support.
-                            (unknown_cb.unwrap())(ua_obj, 0x03, data.as_ptr(), data.len())
+                            (orchard_cb.unwrap())(ua_obj, Box::into_raw(Box::new(addr.unwrap())))
                         }
                     }
                 }
                 unified::Receiver::Sapling(data) => {
-                    // ZIP 316: Senders MUST reject Unified Addresses in which any
-                    // constituent address does not meet the validation requirements of
-                    // its Receiver Encoding.
+                    // ZIP 316: Consumers MUST reject Unified Addresses/Viewing Keys in
+                    // which any constituent Item does not meet the validation
+                    // requirements of its encoding.
                     if sapling::PaymentAddress::from_bytes(&data).is_none() {
                         tracing::error!("Unified Address contains invalid Sapling receiver");
                         false
@@ -118,6 +123,7 @@ pub extern "C" fn zcash_address_parse_unified(
     encoded: *const c_char,
     network: *const c_char,
     ua_obj: Option<UnifiedAddressObj>,
+    orchard_cb: Option<AddOrchardReceiverCb>,
     sapling_cb: Option<AddReceiverCb>,
     p2sh_cb: Option<AddReceiverCb>,
     p2pkh_cb: Option<AddReceiverCb>,
@@ -139,13 +145,15 @@ pub extern "C" fn zcash_address_parse_unified(
 
     let ua: UnifiedAddressHelper = match addr.convert() {
         Ok(ua) => ua,
-        Err(e) => {
-            tracing::error!("{}", e);
+        Err(_) => {
+            // `KeyIO::DecodePaymentAddress` handles the rest of the address kinds.
             return false;
         }
     };
 
-    ua.into_cpp(network, ua_obj, sapling_cb, p2sh_cb, p2pkh_cb, unknown_cb)
+    ua.into_cpp(
+        network, ua_obj, orchard_cb, sapling_cb, p2sh_cb, p2pkh_cb, unknown_cb,
+    )
 }
 
 #[no_mangle]
@@ -162,45 +170,49 @@ pub extern "C" fn zcash_address_serialize_unified(
         None => return ptr::null_mut(),
     };
 
-    let receivers: Vec<unified::Receiver> = (0..receivers_len)
-        .map(
-            |i| match unsafe { (typecode_cb.unwrap())(ua_obj, i) }.into() {
-                unified::Typecode::Orchard => {
-                    // TODO: Replace with Orchard support.
-                    let data_len = unsafe { (receiver_len_cb.unwrap())(ua_obj, i) };
-                    let mut data = vec![0; data_len];
-                    unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data_len) };
-                    unified::Receiver::Unknown {
-                        typecode: 0x03,
-                        data,
+    let receivers: Vec<unified::Receiver> = match (0..receivers_len)
+        .map(|i| {
+            Ok(
+                match unsafe { (typecode_cb.unwrap())(ua_obj, i) }.try_into()? {
+                    unified::Typecode::Orchard => {
+                        let mut data = [0; 43];
+                        unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
+                        unified::Receiver::Orchard(data)
                     }
-                }
-                unified::Typecode::Sapling => {
-                    let mut data = [0; 43];
-                    unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
-                    unified::Receiver::Sapling(data)
-                }
-                unified::Typecode::P2sh => {
-                    let mut data = [0; 20];
-                    unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
-                    unified::Receiver::P2sh(data)
-                }
-                unified::Typecode::P2pkh => {
-                    let mut data = [0; 20];
-                    unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
-                    unified::Receiver::P2pkh(data)
-                }
-                unified::Typecode::Unknown(typecode) => {
-                    let data_len = unsafe { (receiver_len_cb.unwrap())(ua_obj, i) };
-                    let mut data = vec![0; data_len];
-                    unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data_len) };
-                    unified::Receiver::Unknown { typecode, data }
-                }
-            },
-        )
-        .collect();
+                    unified::Typecode::Sapling => {
+                        let mut data = [0; 43];
+                        unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
+                        unified::Receiver::Sapling(data)
+                    }
+                    unified::Typecode::P2sh => {
+                        let mut data = [0; 20];
+                        unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
+                        unified::Receiver::P2sh(data)
+                    }
+                    unified::Typecode::P2pkh => {
+                        let mut data = [0; 20];
+                        unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data.len()) };
+                        unified::Receiver::P2pkh(data)
+                    }
+                    unified::Typecode::Unknown(typecode) => {
+                        let data_len = unsafe { (receiver_len_cb.unwrap())(ua_obj, i) };
+                        let mut data = vec![0; data_len];
+                        unsafe { (receiver_cb.unwrap())(ua_obj, i, data.as_mut_ptr(), data_len) };
+                        unified::Receiver::Unknown { typecode, data }
+                    }
+                },
+            )
+        })
+        .collect::<Result<_, unified::ParseError>>()
+    {
+        Ok(receivers) => receivers,
+        Err(e) => {
+            tracing::error!("{}", e);
+            return ptr::null_mut();
+        }
+    };
 
-    let ua: unified::Address = match receivers.try_into() {
+    let ua = match unified::Address::try_from_items(receivers) {
         Ok(ua) => ua,
         Err(e) => {
             tracing::error!("{}", e);

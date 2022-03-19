@@ -23,52 +23,25 @@ static const int DEFAULT_GENERATE_THREADS = 1;
 
 static const bool DEFAULT_PRINTPRIORITY = false;
 
-class InvalidMinerAddress {
-public:
-    friend bool operator==(const InvalidMinerAddress &a, const InvalidMinerAddress &b) { return true; }
-    friend bool operator<(const InvalidMinerAddress &a, const InvalidMinerAddress &b) { return true; }
-};
-
 typedef std::variant<
-    InvalidMinerAddress,
+    libzcash::OrchardRawAddress,
     libzcash::SaplingPaymentAddress,
     boost::shared_ptr<CReserveScript>> MinerAddress;
 
 class ExtractMinerAddress
 {
-public:
-    ExtractMinerAddress() {}
+    const Consensus::Params& consensus;
+    int height;
 
-    MinerAddress operator()(const libzcash::InvalidEncoding &invalid) const {
-        return InvalidMinerAddress();
-    }
-    MinerAddress operator()(const libzcash::SproutPaymentAddress &addr) const {
-        return InvalidMinerAddress();
-    }
-    MinerAddress operator()(const libzcash::SaplingPaymentAddress &addr) const {
-        return addr;
-    }
-    MinerAddress operator()(const libzcash::UnifiedAddress &addr) const {
-        auto recipient = RecipientForPaymentAddress()(addr);
-        if (recipient) {
-            // This looks like a recursive call, but we are actually calling
-            // ExtractMinerAddress with a different type:
-            // - libzcash::PaymentAddress has a libzcash::UnifiedAddress
-            //   alternative, which invokes this method.
-            // - RecipientForPaymentAddress() returns libzcash::RawAddress,
-            //   which does not have a libzcash::UnifiedAddress alternative.
-            //
-            // This works because std::visit does not require the visitor to
-            // solely match the std::variant, only that it can handle all of
-            // the variant's alternatives.
-            return std::visit(ExtractMinerAddress(), *recipient);
-        } else {
-            // Either the UA only contains unknown shielded receivers (unlikely that we
-            // wouldn't know about them), or it only contains transparent receivers
-            // (which are invalid).
-            return InvalidMinerAddress();
-        }
-    }
+public:
+    ExtractMinerAddress(const Consensus::Params& consensus, int height) :
+        consensus(consensus), height(height) {}
+
+    std::optional<MinerAddress> operator()(const CKeyID &keyID) const;
+    std::optional<MinerAddress> operator()(const CScriptID &addr) const;
+    std::optional<MinerAddress> operator()(const libzcash::SproutPaymentAddress &addr) const;
+    std::optional<MinerAddress> operator()(const libzcash::SaplingPaymentAddress &addr) const;
+    std::optional<MinerAddress> operator()(const libzcash::UnifiedAddress &addr) const;
 };
 
 class KeepMinerAddress
@@ -76,7 +49,7 @@ class KeepMinerAddress
 public:
     KeepMinerAddress() {}
 
-    void operator()(const InvalidMinerAddress &invalid) const {}
+    void operator()(const libzcash::OrchardRawAddress &addr) const {}
     void operator()(const libzcash::SaplingPaymentAddress &pa) const {}
     void operator()(const boost::shared_ptr<CReserveScript> &coinbaseScript) const {
         coinbaseScript->KeepScript();
@@ -90,8 +63,8 @@ class IsValidMinerAddress
 public:
     IsValidMinerAddress() {}
 
-    bool operator()(const InvalidMinerAddress &invalid) const {
-        return false;
+    bool operator()(const libzcash::OrchardRawAddress &addr) const {
+        return true;
     }
     bool operator()(const libzcash::SaplingPaymentAddress &pa) const {
         return true;
@@ -110,6 +83,10 @@ struct CBlockTemplate
     // Cached whenever we update `block`, so we can update hashBlockCommitments
     // when we change the coinbase transaction.
     uint256 hashChainHistoryRoot;
+    // Cached whenever we update `block`, so we can return it from `getblocktemplate`
+    // (enabling the caller to update `hashBlockCommitments` when they change
+    // `hashPrevBlock`).
+    uint256 hashAuthDataRoot;
     std::vector<CAmount> vTxFees;
     std::vector<int64_t> vTxSigOps;
 };
@@ -121,7 +98,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const MinerAddre
 
 #ifdef ENABLE_MINING
 /** Get -mineraddress */
-void GetMinerAddress(MinerAddress &minerAddress);
+void GetMinerAddress(std::optional<MinerAddress> &minerAddress);
 /** Modify the extranonce in a block */
 void IncrementExtraNonce(
     CBlockTemplate* pblocktemplate,

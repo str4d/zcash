@@ -157,11 +157,22 @@ extern CCriticalSection cs_main;
 extern CTxMemPool mempool;
 typedef boost::unordered_map<uint256, CBlockIndex*, BlockHasher> BlockMap;
 extern BlockMap mapBlockIndex;
-extern uint64_t nLastBlockTx;
-extern uint64_t nLastBlockSize;
+extern std::optional<uint64_t> last_block_num_txs;
+extern std::optional<uint64_t> last_block_size;
 extern const std::string strMessageMagic;
-extern CWaitableCriticalSection csBestBlock;
-extern CConditionVariable cvBlockChange;
+
+//! These four variables are used to notify getblocktemplate RPC of new tips.
+//! When UpdateTip() establishes a new tip (best block), it must awaken a
+//! waiting getblocktemplate RPC (if there is one) immediately. But upon waking
+//! up, getblocktemplate cannot call chainActive->Tip() because it does not
+//! (and cannot) hold cs_main. So the g_best_block_height and g_best_block variables
+//! (protected by g_best_block_mutex) provide the needed height and block
+//! hash respectively to getblocktemplate without it requiring cs_main.
+extern CWaitableCriticalSection g_best_block_mutex;
+extern CConditionVariable g_best_block_cv;
+extern int g_best_block_height;
+extern uint256 g_best_block;
+
 extern std::atomic_bool fImporting;
 extern std::atomic_bool fReindex;
 extern int nScriptCheckThreads;
@@ -273,6 +284,8 @@ bool SendMessages(const Consensus::Params& params, CNode* pto);
 void ThreadScriptCheck();
 /** Check whether we are doing an initial block download (synchronizing from disk or network) */
 bool IsInitialBlockDownload(const Consensus::Params& params);
+/** testing-only, set or reset initial block down (IBD) state, return previous */
+bool TestSetIBD(bool);
 /** Format a string that describes several potential problems detected by the core */
 std::pair<std::string, int64_t> GetWarnings(const std::string& strFor);
 /** Retrieve a transaction (from memory pool, or from disk, if possible) */

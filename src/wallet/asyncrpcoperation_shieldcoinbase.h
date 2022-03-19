@@ -45,7 +45,7 @@ public:
         TransactionBuilder builder,
         CMutableTransaction contextualTx,
         std::vector<ShieldCoinbaseUTXO> inputs,
-        std::string toAddress,
+        PaymentAddress toAddress,
         CAmount fee = DEFAULT_FEE,
         UniValue contextInfo = NullUniValue);
     virtual ~AsyncRPCOperation_shieldcoinbase();
@@ -99,14 +99,17 @@ class ShieldToAddress
 private:
     AsyncRPCOperation_shieldcoinbase *m_op;
     CAmount sendAmount;
+
+    static void shieldToAddress(const libzcash::RecipientAddress& recipient, AsyncRPCOperation_shieldcoinbase *m_op);
 public:
     ShieldToAddress(AsyncRPCOperation_shieldcoinbase *op, CAmount sendAmount) :
         m_op(op), sendAmount(sendAmount) {}
 
+    bool operator()(const CKeyID &zaddr) const;
+    bool operator()(const CScriptID &zaddr) const;
     bool operator()(const libzcash::SproutPaymentAddress &zaddr) const;
     bool operator()(const libzcash::SaplingPaymentAddress &zaddr) const;
     bool operator()(const libzcash::UnifiedAddress &uaddr) const;
-    bool operator()(const libzcash::InvalidEncoding& no) const;
 };
 
 

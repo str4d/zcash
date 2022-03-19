@@ -39,7 +39,6 @@ class FullBlockTest(ComparisonTestFramework):
         Change the "outcome" variable from each TestInstance object to only do the comparison. '''
     def __init__(self):
         super().__init__()
-        self.num_nodes = 1
         self.block_heights = {}
         self.coinbase_key = CECKey()
         self.coinbase_key.set_secretbytes(b"horsebattery")
@@ -159,7 +158,7 @@ class FullBlockTest(ComparisonTestFramework):
         yield test
 
 
-        # Start by bulding a couple of blocks on top (which output is spent is in parentheses):
+        # Start by building a couple of blocks on top (which output is spent is in parentheses):
         #     genesis -> b1 (0) -> b2 (1)
         out0 = get_spendable_output()
         block(1, spend=out0)

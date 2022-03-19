@@ -8,6 +8,7 @@
 #include "transaction_builder.h"
 
 #include <array>
+#include <optional>
 
 #include <rust/ed25519.h>
 
@@ -316,8 +317,8 @@ void RegtestDeactivateNU5() {
 }
 
 libzcash::SaplingExtendedSpendingKey GetTestMasterSaplingSpendingKey() {
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
+    SecureString mnemonic("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art");
+    auto seed{MnemonicSeed::ForPhrase(English, mnemonic).value()};
     return libzcash::SaplingExtendedSpendingKey::Master(seed);
 }
 
@@ -346,9 +347,9 @@ CWalletTx GetValidSaplingReceive(const Consensus::Params& consensusParams,
     auto scriptPubKey = GetScriptForDestination(tsk.GetPubKey().GetID());
     // To zaddr
     auto fvk = sk.expsk.full_viewing_key();
-    auto pa = sk.DefaultAddress();
+    auto pa = sk.ToXFVK().DefaultAddress();
 
-    auto builder = TransactionBuilder(consensusParams, 1, &keyStore);
+    auto builder = TransactionBuilder(consensusParams, 1, std::nullopt, &keyStore);
     builder.SetFee(0);
     builder.AddTransparentInput(COutPoint(), scriptPubKey, value);
     builder.AddSaplingOutput(fvk.ovk, pa, value, {});
@@ -356,4 +357,28 @@ CWalletTx GetValidSaplingReceive(const Consensus::Params& consensusParams,
     CTransaction tx = builder.Build().GetTxOrThrow();
     CWalletTx wtx {NULL, tx};
     return wtx;
+}
+
+
+
+void LoadProofParameters() {
+    fs::path sapling_spend = ZC_GetParamsDir() / "sapling-spend.params";
+    fs::path sapling_output = ZC_GetParamsDir() / "sapling-output.params";
+    fs::path sprout_groth16 = ZC_GetParamsDir() / "sprout-groth16.params";
+
+    static_assert(
+        sizeof(fs::path::value_type) == sizeof(codeunit),
+        "librustzcash not configured correctly");
+    auto sapling_spend_str = sapling_spend.native();
+    auto sapling_output_str = sapling_output.native();
+    auto sprout_groth16_str = sprout_groth16.native();
+
+    librustzcash_init_zksnark_params(
+        reinterpret_cast<const codeunit*>(sapling_spend_str.c_str()),
+        sapling_spend_str.length(),
+        reinterpret_cast<const codeunit*>(sapling_output_str.c_str()),
+        sapling_output_str.length(),
+        reinterpret_cast<const codeunit*>(sprout_groth16_str.c_str()),
+        sprout_groth16_str.length()
+    );
 }

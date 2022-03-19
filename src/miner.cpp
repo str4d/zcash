@@ -71,8 +71,8 @@ public:
     }
 };
 
-uint64_t nLastBlockTx = 0;
-uint64_t nLastBlockSize = 0;
+std::optional<uint64_t> last_block_num_txs;
+std::optional<uint64_t> last_block_size;
 
 // We want to sort transactions by priority and fee rate, so:
 typedef boost::tuple<double, CFeeRate, const CTransaction*> TxPriority;
@@ -117,9 +117,7 @@ void UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, 
 }
 
 bool IsShieldedMinerAddress(const MinerAddress& minerAddr) {
-    return !(
-        std::holds_alternative<InvalidMinerAddress>(minerAddr) ||
-        std::holds_alternative<boost::shared_ptr<CReserveScript>>(minerAddr));
+    return !std::holds_alternative<boost::shared_ptr<CReserveScript>>(minerAddr);
 }
 
 class AddFundingStreamValueToTx
@@ -216,32 +214,84 @@ public:
         return miner_reward + nFees;
     }
 
-    void ComputeBindingSig(void* ctx) const {
+    void ComputeBindingSig(void* saplingCtx, std::optional<orchard::UnauthorizedBundle> orchardBundle) const {
         // Empty output script.
         uint256 dataToBeSigned;
-        CScript scriptCode;
         try {
-            dataToBeSigned = SignatureHash(
-                scriptCode, mtx, NOT_AN_INPUT, SIGHASH_ALL, 0,
-                CurrentEpochBranchId(nHeight, chainparams.GetConsensus()));
+            if (orchardBundle.has_value()) {
+                // Orchard is only usable with v5+ transactions.
+                dataToBeSigned = ProduceZip244SignatureHash(mtx, orchardBundle.value());
+            } else {
+                CScript scriptCode;
+                dataToBeSigned = SignatureHash(
+                    scriptCode, mtx, NOT_AN_INPUT, SIGHASH_ALL, 0,
+                    CurrentEpochBranchId(nHeight, chainparams.GetConsensus()));
+            }
         } catch (std::logic_error ex) {
-            librustzcash_sapling_proving_ctx_free(ctx);
+            librustzcash_sapling_proving_ctx_free(saplingCtx);
             throw ex;
         }
 
+        if (orchardBundle.has_value()) {
+            auto authorizedBundle = orchardBundle.value().ProveAndSign({}, dataToBeSigned);
+            if (authorizedBundle.has_value()) {
+                mtx.orchardBundle = authorizedBundle.value();
+            } else {
+                librustzcash_sapling_proving_ctx_free(saplingCtx);
+                throw new std::runtime_error("Failed to create Orchard proof or signatures");
+            }
+        }
+
         bool success = librustzcash_sapling_binding_sig(
-            ctx,
+            saplingCtx,
             mtx.valueBalanceSapling,
             dataToBeSigned.begin(),
             mtx.bindingSig.data());
 
         if (!success) {
-            librustzcash_sapling_proving_ctx_free(ctx);
+            librustzcash_sapling_proving_ctx_free(saplingCtx);
             throw new std::runtime_error("An error occurred computing the binding signature.");
         }
     }
 
-    void operator()(const InvalidMinerAddress &invalid) const {}
+    // Create Orchard output
+    void operator()(const libzcash::OrchardRawAddress &to) const {
+        auto ctx = librustzcash_sapling_proving_ctx_init();
+
+        // `enableSpends` must be set to `false` for coinbase transactions. This
+        // means the Orchard anchor is unconstrained, so we set it to the empty
+        // tree root via a null (all zeroes) uint256.
+        uint256 orchardAnchor;
+        auto builder = orchard::Builder(false, true, orchardAnchor);
+
+        // Shielded coinbase outputs must be recoverable with an all-zeroes ovk.
+        uint256 ovk;
+        auto miner_reward = SetFoundersRewardAndGetMinerValue(ctx);
+        builder.AddOutput(ovk, to, miner_reward, std::nullopt);
+
+        // orchard::Builder pads to two Actions, but does so using a "no OVK" policy for
+        // dummy outputs, which violates coinbase rules requiring all shielded outputs to
+        // be recoverable. We manually add a dummy output to sidestep this issue.
+        // TODO: If/when we have funding streams going to Orchard recipients, this dummy
+        // output can be removed.
+        RawHDSeed rawSeed(32, 0);
+        GetRandBytes(rawSeed.data(), 32);
+        auto dummyTo = libzcash::OrchardSpendingKey::ForAccount(HDSeed(rawSeed), Params().BIP44CoinType(), 0)
+            .ToFullViewingKey()
+            .ToIncomingViewingKey()
+            .Address(0);
+        builder.AddOutput(ovk, dummyTo, 0, std::nullopt);
+
+        auto bundle = builder.Build();
+        if (!bundle.has_value()) {
+            librustzcash_sapling_proving_ctx_free(ctx);
+            throw new std::runtime_error("Failed to create shielded output for miner");
+        }
+
+        ComputeBindingSig(ctx, std::move(bundle));
+
+        librustzcash_sapling_proving_ctx_free(ctx);
+    }
 
     // Create shielded output
     void operator()(const libzcash::SaplingPaymentAddress &pa) const {
@@ -262,7 +312,7 @@ public:
         }
         mtx.vShieldedOutput.push_back(odesc.value());
 
-        ComputeBindingSig(ctx);
+        ComputeBindingSig(ctx, std::nullopt);
 
         librustzcash_sapling_proving_ctx_free(ctx);
     }
@@ -281,7 +331,7 @@ public:
         mtx.vout[0] = CTxOut(value, coinbaseScript->reserveScript);
 
         if (mtx.vShieldedOutput.size() > 0) {
-            ComputeBindingSig(ctx);
+            ComputeBindingSig(ctx, std::nullopt);
         }
 
         librustzcash_sapling_proving_ctx_free(ctx);
@@ -331,7 +381,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const MinerAddre
 
     // Largest block you're willing to create:
     unsigned int nBlockMaxSize = GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
-    // Limit to betweeen 1K and MAX_BLOCK_SIZE-1K for sanity:
+    // Limit to between 1K and MAX_BLOCK_SIZE-1K for sanity:
     nBlockMaxSize = std::max((unsigned int)1000, std::min((unsigned int)(MAX_BLOCK_SIZE-1000), nBlockMaxSize));
 
     // How much of the block should be dedicated to high-priority transactions,
@@ -610,8 +660,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const MinerAddre
             }
         }
 
-        nLastBlockTx = nBlockTx;
-        nLastBlockSize = nBlockSize;
+        last_block_num_txs = nBlockTx;
+        last_block_size = nBlockSize;
         LogPrintf("CreateNewBlock(): total size %u\n", nBlockSize);
 
         // Create coinbase tx
@@ -642,14 +692,38 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const MinerAddre
         pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
         if (chainparams.GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_NU5)) {
             // hashBlockCommitments depends on the block transactions, so we have to
-            // update it whenever the coinbase transaction changes. Leave it unset here,
-            // like hashMerkleRoot, and instead cache what we will need to calculate it.
+            // update it whenever the coinbase transaction changes.
+            //
+            // - For the internal miner (either directly or via the `generate` RPC), this
+            //   will occur in `IncrementExtraNonce()`, like for `hashMerkleRoot`.
+            // - For `getblocktemplate`, we have two sets of fields to handle:
+            //   - The `defaultroots` fields, which contain both the default value (if
+            //     nothing in the template is altered), and the roots that can be used to
+            //     recalculate it (if some or all of the template is altered).
+            //   - The legacy `finalsaplingroothash`, `lightclientroothash`, and
+            //     `blockcommitmentshash` fields, which had the semantics of "place this
+            //     value into the block header and things will work" (except for in
+            //     v4.6.0 where they were accidentally set to always be the NU5 value).
+            //
+            // To accommodate all use cases, we calculate the `hashBlockCommitments`
+            // default value here (unlike `hashMerkleRoot`), and additionally cache the
+            // values necessary to recalculate it.
             pblocktemplate->hashChainHistoryRoot = view.GetHistoryRoot(prevConsensusBranchId);
+            pblocktemplate->hashAuthDataRoot = pblock->BuildAuthDataMerkleTree();
+            pblock->hashBlockCommitments = DeriveBlockCommitmentsHash(
+                    pblocktemplate->hashChainHistoryRoot,
+                    pblocktemplate->hashAuthDataRoot);
         } else if (IsActivationHeight(nHeight, chainparams.GetConsensus(), Consensus::UPGRADE_HEARTWOOD)) {
+            pblocktemplate->hashChainHistoryRoot.SetNull();
+            pblocktemplate->hashAuthDataRoot.SetNull();
             pblock->hashBlockCommitments.SetNull();
         } else if (chainparams.GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_HEARTWOOD)) {
-            pblock->hashBlockCommitments = view.GetHistoryRoot(prevConsensusBranchId);
+            pblocktemplate->hashChainHistoryRoot = view.GetHistoryRoot(prevConsensusBranchId);
+            pblocktemplate->hashAuthDataRoot.SetNull();
+            pblock->hashBlockCommitments = pblocktemplate->hashChainHistoryRoot;
         } else {
+            pblocktemplate->hashChainHistoryRoot.SetNull();
+            pblocktemplate->hashAuthDataRoot.SetNull();
             pblock->hashBlockCommitments = sapling_tree.root();
         }
         UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
@@ -682,24 +756,55 @@ class MinerAddressScript : public CReserveScript
     void KeepScript() {}
 };
 
-void GetMinerAddress(MinerAddress &minerAddress)
+std::optional<MinerAddress> ExtractMinerAddress::operator()(const CKeyID &keyID) const {
+    boost::shared_ptr<MinerAddressScript> mAddr(new MinerAddressScript());
+    mAddr->reserveScript = CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
+    return mAddr;
+}
+std::optional<MinerAddress> ExtractMinerAddress::operator()(const CScriptID &addr) const {
+    return std::nullopt;
+}
+std::optional<MinerAddress> ExtractMinerAddress::operator()(const libzcash::SproutPaymentAddress &addr) const {
+    return std::nullopt;
+}
+std::optional<MinerAddress> ExtractMinerAddress::operator()(const libzcash::SaplingPaymentAddress &addr) const {
+    return addr;
+}
+std::optional<MinerAddress> ExtractMinerAddress::operator()(const libzcash::UnifiedAddress &addr) const {
+    auto preferred = addr.GetPreferredRecipientAddress(consensus, height);
+    if (preferred.has_value()) {
+        std::optional<MinerAddress> ret;
+        std::visit(match {
+            [&](const libzcash::OrchardRawAddress addr) { ret = MinerAddress(addr); },
+            [&](const libzcash::SaplingPaymentAddress addr) { ret = MinerAddress(addr); },
+            [&](const CKeyID keyID) { ret = operator()(keyID); },
+            [&](const auto other) { ret = std::nullopt; }
+        }, preferred.value());
+        return ret;
+    } else {
+        return std::nullopt;
+    }
+}
+
+
+void GetMinerAddress(std::optional<MinerAddress> &minerAddress)
 {
     KeyIO keyIO(Params());
 
-    // Try a transparent address first
-    auto mAddrArg = GetArg("-mineraddress", "");
-    CTxDestination addr = keyIO.DecodeDestination(mAddrArg);
-    if (IsValidDestination(addr)) {
-        boost::shared_ptr<MinerAddressScript> mAddr(new MinerAddressScript());
-        CKeyID keyID = std::get<CKeyID>(addr);
+    // If the user sets a UA miner address with an Orchard component, we want to ensure we
+    // start using it once we reach that height.
+    int height;
+    {
+        LOCK(cs_main);
+        height = chainActive.Height() + 1;
+    }
 
-        mAddr->reserveScript = CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
-        minerAddress = mAddr;
-    } else {
-        // Try a payment address
-        auto zaddr = std::visit(ExtractMinerAddress(), keyIO.DecodePaymentAddress(mAddrArg));
-        if (std::visit(IsValidMinerAddress(), zaddr)) {
-            minerAddress = zaddr;
+    auto mAddrArg = GetArg("-mineraddress", "");
+    auto zaddr0 = keyIO.DecodePaymentAddress(mAddrArg);
+    if (zaddr0.has_value()) {
+        auto zaddr = std::visit(ExtractMinerAddress(Params().GetConsensus(), height), zaddr0.value());
+        if (zaddr.has_value()) {
+            minerAddress = zaddr.value();
         }
     }
 }
@@ -727,9 +832,10 @@ void IncrementExtraNonce(
     pblock->vtx[0] = txCoinbase;
     pblock->hashMerkleRoot = pblock->BuildMerkleTree();
     if (consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_NU5)) {
+        pblocktemplate->hashAuthDataRoot = pblock->BuildAuthDataMerkleTree();
         pblock->hashBlockCommitments = DeriveBlockCommitmentsHash(
             pblocktemplate->hashChainHistoryRoot,
-            pblock->BuildAuthDataMerkleTree());
+            pblocktemplate->hashAuthDataRoot);
     }
 }
 
@@ -767,8 +873,8 @@ void static BitcoinMiner(const CChainParams& chainparams)
     // Each thread has its own counter
     unsigned int nExtraNonce = 0;
 
-    MinerAddress minerAddress;
-    GetMainSignals().AddressForMining(minerAddress);
+    std::optional<MinerAddress> maybeMinerAddress;
+    GetMainSignals().AddressForMining(maybeMinerAddress);
 
     unsigned int n = chainparams.GetConsensus().nEquihashN;
     unsigned int k = chainparams.GetConsensus().nEquihashK;
@@ -789,9 +895,10 @@ void static BitcoinMiner(const CChainParams& chainparams)
 
     try {
         // Throw an error if no address valid for mining was provided.
-        if (!std::visit(IsValidMinerAddress(), minerAddress)) {
+        if (!(maybeMinerAddress.has_value() && std::visit(IsValidMinerAddress(), maybeMinerAddress.value()))) {
             throw std::runtime_error("No miner address available (mining requires a wallet or -mineraddress)");
         }
+        auto minerAddress = maybeMinerAddress.value();
 
         while (true) {
             if (chainparams.MiningRequiresPeers()) {

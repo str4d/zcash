@@ -24,53 +24,31 @@
 #include <rust/ed25519/types.h>
 
 using namespace libzcash;
-class TxValues;
 
-class SendManyRecipient {
+class SendManyRecipient : public RecipientMapping {
 public:
-    std::string address;
     CAmount amount;
-    std::string memo;
+    std::optional<std::string> memo;
 
-    SendManyRecipient(std::string address_, CAmount amount_, std::string memo_) :
-        address(address_), amount(amount_), memo(memo_) {}
+    SendManyRecipient(std::optional<libzcash::UnifiedAddress> ua_, libzcash::RecipientAddress address_, CAmount amount_, std::optional<std::string> memo_) :
+        RecipientMapping(ua_, address_), amount(amount_), memo(memo_) {}
 };
 
-class SendManyInputJSOP {
+class TxOutputAmounts {
 public:
-    JSOutPoint point;
-    SproutNote note;
-    CAmount amount;
-
-    SendManyInputJSOP(JSOutPoint point_, SproutNote note_, CAmount amount_) :
-        point(point_), note(note_), amount(amount_) {}
-};
-
-// Package of info which is passed to perform_joinsplit methods.
-struct AsyncJoinSplitInfo
-{
-    std::vector<JSInput> vjsin;
-    std::vector<JSOutput> vjsout;
-    std::vector<SproutNote> notes;
-    CAmount vpub_old = 0;
-    CAmount vpub_new = 0;
-};
-
-// A struct to help us track the witness and anchor for a given JSOutPoint
-struct WitnessAnchorData {
-	std::optional<SproutWitness> witness;
-	uint256 anchor;
+    CAmount t_outputs_total{0};
+    CAmount sapling_outputs_total{0};
+    CAmount orchard_outputs_total{0};
 };
 
 class AsyncRPCOperation_sendmany : public AsyncRPCOperation {
 public:
     AsyncRPCOperation_sendmany(
-        std::optional<TransactionBuilder> builder,
-        CMutableTransaction contextualTx,
-        std::string fromAddress,
-        std::vector<SendManyRecipient> tOutputs,
-        std::vector<SendManyRecipient> zOutputs,
+        TransactionBuilder builder,
+        ZTXOSelector ztxoSelector,
+        std::vector<SendManyRecipient> recipients,
         int minDepth,
+        TransactionStrategy strategy,
         CAmount fee = DEFAULT_FEE,
         UniValue contextInfo = NullUniValue);
     virtual ~AsyncRPCOperation_sendmany();
@@ -85,67 +63,38 @@ public:
 
     virtual UniValue getStatus() const;
 
-    bool testmode = false;  // Set to true to disable sending txs and generating proofs
-
-    bool paymentDisclosureMode = false; // Set to true to save esk for encrypted notes in payment disclosure database.
+    bool testmode{false};  // Set to true to disable sending txs and generating proofs
 
 private:
     friend class TEST_FRIEND_AsyncRPCOperation_sendmany;    // class for unit testing
 
+    TransactionBuilder builder_;
+    ZTXOSelector ztxoSelector_;
+    std::vector<SendManyRecipient> recipients_;
+    int mindepth_{1};
+    CAmount fee_;
     UniValue contextinfo_;     // optional data to include in return value from getStatus()
 
-    bool isUsingBuilder_; // Indicates that no Sprout addresses are involved
-    uint32_t consensusBranchId_;
-    CAmount fee_;
-    int mindepth_;
-    std::string fromaddress_;
-    bool useanyutxo_;
-    bool isfromtaddr_;
-    bool isfromzaddr_;
-    CTxDestination fromtaddr_;
-    PaymentAddress frompaymentaddress_;
-    SpendingKey spendingkey_;
+    bool isfromsprout_{false};
+    bool isfromsapling_{false};
+    TransactionStrategy strategy_;
+    uint32_t transparentRecipients_{0};
+    AccountId sendFromAccount_;
+    std::set<OutputPool> recipientPools_;
+    TxOutputAmounts txOutputAmounts_;
 
-    Ed25519VerificationKey joinSplitPubKey_;
-    Ed25519SigningKey joinSplitPrivKey_;
+    /**
+     * Compute the internal and external OVKs to use in transaction construction, given
+     * the spendable inputs.
+     */
+    std::pair<uint256, uint256> SelectOVKs(const SpendableInputs& spendable) const;
 
-    // The key is the result string from calling JSOutPoint::ToString()
-    std::unordered_map<std::string, WitnessAnchorData> jsopWitnessAnchorMap;
+    static CAmount DefaultDustThreshold();
 
-    std::vector<SendManyRecipient> t_outputs_;
-    std::vector<SendManyRecipient> z_outputs_;
-    std::vector<COutput> t_inputs_;
-    std::vector<SendManyInputJSOP> z_sprout_inputs_;
-    std::vector<SaplingNoteEntry> z_sapling_inputs_;
+    static std::array<unsigned char, ZC_MEMO_SIZE> get_memo_from_hex_string(std::string s);
 
-    TransactionBuilder builder_;
-    CTransaction tx_;
-
-    void add_taddr_change_output_to_tx(CReserveKey& keyChange, CAmount amount);
-    void add_taddr_outputs_to_tx();
-    bool find_unspent_notes();
-    bool find_utxos(bool fAcceptCoinbase, TxValues& txValues);
-    // Load transparent inputs into the transaction or the transactionBuilder (in case of have it)
-    bool load_inputs(TxValues& txValues);
-    std::array<unsigned char, ZC_MEMO_SIZE> get_memo_from_hex_string(std::string s);
-    bool main_impl();
-
-    // JoinSplit without any input notes to spend
-    UniValue perform_joinsplit(AsyncJoinSplitInfo &);
-
-    // JoinSplit with input notes to spend (JSOutPoints))
-    UniValue perform_joinsplit(AsyncJoinSplitInfo &, std::vector<JSOutPoint> & );
-
-    // JoinSplit where you have the witnesses and anchor
-    UniValue perform_joinsplit(
-        AsyncJoinSplitInfo & info,
-        std::vector<std::optional < SproutWitness>> witnesses,
-        uint256 anchor);
-
-    // payment disclosure!
-    std::vector<PaymentDisclosureKeyInfo> paymentDisclosureData_;
+    uint256 main_impl();
 };
-
 
 // To test private methods, a friend class can act as a proxy
 class TEST_FRIEND_AsyncRPCOperation_sendmany {
@@ -154,50 +103,12 @@ public:
 
     TEST_FRIEND_AsyncRPCOperation_sendmany(std::shared_ptr<AsyncRPCOperation_sendmany> ptr) : delegate(ptr) {}
 
-    CTransaction getTx() {
-        return delegate->tx_;
-    }
-
-    void setTx(CTransaction tx) {
-        delegate->tx_ = tx;
-    }
-
-    // Delegated methods
-
-    void add_taddr_change_output_to_tx(CReserveKey& keyChange, CAmount amount) {
-        delegate->add_taddr_change_output_to_tx(keyChange, amount);
-    }
-
-    void add_taddr_outputs_to_tx() {
-        delegate->add_taddr_outputs_to_tx();
-    }
-
-    bool find_unspent_notes() {
-        return delegate->find_unspent_notes();
-    }
-
     std::array<unsigned char, ZC_MEMO_SIZE> get_memo_from_hex_string(std::string s) {
         return delegate->get_memo_from_hex_string(s);
     }
 
-    bool main_impl() {
+    uint256 main_impl() {
         return delegate->main_impl();
-    }
-
-    UniValue perform_joinsplit(AsyncJoinSplitInfo &info) {
-        return delegate->perform_joinsplit(info);
-    }
-
-    UniValue perform_joinsplit(AsyncJoinSplitInfo &info, std::vector<JSOutPoint> &v ) {
-        return delegate->perform_joinsplit(info, v);
-    }
-
-    UniValue perform_joinsplit(
-        AsyncJoinSplitInfo & info,
-        std::vector<std::optional < SproutWitness>> witnesses,
-        uint256 anchor)
-    {
-        return delegate->perform_joinsplit(info, witnesses, anchor);
     }
 
     void set_state(OperationStatus state) {

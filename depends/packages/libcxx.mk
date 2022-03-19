@@ -8,10 +8,10 @@ ifneq ($(host_os),mingw32)
 $(package)_download_path=$(native_clang_download_path)
 $(package)_download_file_aarch64_linux=clang+llvm-$($(package)_version)-aarch64-linux-gnu.tar.xz
 $(package)_file_name_aarch64_linux=clang-llvm-$($(package)_version)-aarch64-linux-gnu.tar.xz
-$(package)_sha256_hash_aarch64_linux=3d4ad804b7c85007686548cbc917ab067bf17eaedeab43d9eb83d3a683d8e9d4
-$(package)_download_file_linux=clang+llvm-$($(package)_version)-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-$(package)_file_name_linux=clang-llvm-$($(package)_version)-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-$(package)_sha256_hash_linux=6b3cc55d3ef413be79785c4dc02828ab3bd6b887872b143e3091692fc6acefe7
+$(package)_sha256_hash_aarch64_linux=15ff2db12683e69e552b6668f7ca49edaa01ce32cb1cbc8f8ed2e887ab291069
+$(package)_download_file_linux=clang+llvm-$($(package)_version)-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+$(package)_file_name_linux=clang-llvm-$($(package)_version)-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+$(package)_sha256_hash_linux=84a54c69781ad90615d1b0276a83ff87daaeded99fbc64457c350679df7b4ff0
 
 define $(package)_stage_cmds
   mkdir -p $($(package)_staging_prefix_dir)/lib && \
@@ -21,14 +21,15 @@ endef
 
 else
 # For Windows cross-compilation, use the MSYS2 binaries.
+# Using 13.0.0-3 because 13.0.1-1 has missing `new` and `delete` symbols.
 $(package)_download_path=https://repo.msys2.org/mingw/x86_64
-$(package)_download_file=mingw-w64-x86_64-libc++-12.0.1-1-any.pkg.tar.zst
-$(package)_file_name=mingw-w64-x86_64-libcxx-12.0.1-1-any.pkg.tar.zst
-$(package)_sha256_hash=847d86435c35f12b4bc779c91c800a86499ba5c9d419d6ed5e2386c7582c2e81
+$(package)_download_file=mingw-w64-x86_64-libc++-13.0.0-3-any.pkg.tar.zst
+$(package)_file_name=mingw-w64-x86_64-libcxx-13.0.0-3-any.pkg.tar.zst
+$(package)_sha256_hash=0f8819e88273579f7c9262456c6b8f4d73e1693095c2364d1192c61c5f6a1a4f
 
-$(package)_libcxxabi_download_file=mingw-w64-x86_64-libc++abi-12.0.1-1-any.pkg.tar.zst
-$(package)_libcxxabi_file_name=mingw-w64-x86_64-libcxxabi-12.0.1-1-any.pkg.tar.zst
-$(package)_libcxxabi_sha256_hash=a60294cb611916f4b9db27b7a6f3d6dc0f75d9006ad6a5bb830427df9b5bc9d2
+$(package)_libcxxabi_download_file=mingw-w64-x86_64-libc++abi-13.0.0-3-any.pkg.tar.zst
+$(package)_libcxxabi_file_name=mingw-w64-x86_64-libcxxabi-13.0.0-3-any.pkg.tar.zst
+$(package)_libcxxabi_sha256_hash=7224a7252a566938afe91ea8f130682abd29b10e13c9a3c2347af523ca0d7c42
 
 $(package)_extra_sources += $($(package)_libcxxabi_file_name)
 

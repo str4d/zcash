@@ -29,6 +29,9 @@ LIBSECP256K1=secp256k1/libsecp256k1.la
 LIBUNIVALUE=univalue/libunivalue.la
 LIBZCASH=libzcash.a
 
+WALLET_TOOL_BIN=zcashd-wallet-tool$(EXEEXT)
+WALLET_TOOL_BUILD=$(top_builddir)/target/$(RUST_TARGET)/release/zcashd-wallet-tool$(EXEEXT)
+
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
 endif
@@ -39,8 +42,15 @@ if ENABLE_WALLET
 LIBBITCOIN_WALLET=libbitcoin_wallet.a
 endif
 
-RUST_ENV_VARS = RUSTC="$(RUSTC)" TERM=dumb
-RUST_BUILD_OPTS = --lib --release --target $(RUST_TARGET)
+# We depend on the secp256k1 crate for some logic on the Rust side of the FFI. This crate
+# is a wrapper around libsecp256k1, which we already vendor in our code; the crate vendors
+# its own copy with non-colliding symbols. To ensure that we only use a single version of
+# libsecp256k1, we disable symbol renaming in the secp256k1-sys crate  so it links to the
+# same library as the C++ code.
+# - Note that this does not prevent the secp256k1-sys vendored code from being built; this
+#   requires https://github.com/rust-bitcoin/rust-secp256k1/issues/380 to be addressed.
+RUST_ENV_VARS = RUSTC="$(RUSTC)" TERM=dumb RUSTFLAGS="--cfg=rust_secp_no_symbol_renaming"
+RUST_BUILD_OPTS = --release --target $(RUST_TARGET) --manifest-path $(top_srcdir)/Cargo.toml
 
 rust_verbose = $(rust_verbose_@AM_V@)
 rust_verbose_ = $(rust_verbose_@AM_DEFAULT_V@)
@@ -65,10 +75,16 @@ $(CARGO_CONFIGURED): $(top_srcdir)/.cargo/config.offline
 	$(AM_V_at)touch $@
 endif
 
-cargo-build: $(CARGO_CONFIGURED)
-	$(RUST_ENV_VARS) $(CARGO) build $(RUST_BUILD_OPTS) $(rust_verbose) --manifest-path $(top_srcdir)/Cargo.toml
+cargo-build-lib: $(CARGO_CONFIGURED)
+	$(RUST_ENV_VARS) $(CARGO) build --lib $(RUST_BUILD_OPTS) $(rust_verbose)
 
-$(LIBRUSTZCASH): cargo-build
+cargo-build-bins: $(CARGO_CONFIGURED)
+	$(RUST_ENV_VARS) $(CARGO) build --bins $(RUST_BUILD_OPTS) $(rust_verbose)
+
+$(WALLET_TOOL_BIN): cargo-build-bins
+	$(AM_V_at)cp $(WALLET_TOOL_BUILD) $@
+
+$(LIBRUSTZCASH): cargo-build-lib
 
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
 	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
@@ -92,6 +108,7 @@ lib_LTLIBRARIES = $(LIBZCASH_SCRIPT)
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
+bin_SCRIPTS =
 TESTS =
 BENCHMARKS =
 
@@ -101,14 +118,19 @@ endif
 
 if BUILD_BITCOIN_UTILS
   bin_PROGRAMS += zcash-cli zcash-tx
+  bin_SCRIPTS += $(WALLET_TOOL_BIN)
 endif
 
 LIBZCASH_H = \
   zcash/IncrementalMerkleTree.hpp \
   zcash/NoteEncryption.hpp \
   zcash/Address.hpp \
+  zcash/address/transparent.h \
+  zcash/address/mnemonic.h \
+  zcash/address/orchard.hpp \
   zcash/address/sapling.hpp \
   zcash/address/sprout.hpp \
+  zcash/address/unified.h \
   zcash/address/zip32.h \
   zcash/History.hpp \
   zcash/JoinSplit.hpp \
@@ -118,7 +140,7 @@ LIBZCASH_H = \
   zcash/util.h \
   zcash/Zcash.h
 
-.PHONY: FORCE cargo-build check-symbols check-security
+.PHONY: FORCE cargo-build-lib cargo-build-bins check-symbols check-security
 # bitcoin core #
 BITCOIN_CORE_H = \
   addrdb.h \
@@ -180,6 +202,7 @@ BITCOIN_CORE_H = \
   pow.h \
   prevector.h \
   primitives/block.h \
+  primitives/orchard.h \
   primitives/transaction.h \
   proof_verifier.h \
   protocol.h \
@@ -222,6 +245,7 @@ BITCOIN_CORE_H = \
   uint252.h \
   undo.h \
   util.h \
+  util/match.h \
   utilmoneystr.h \
   utilstrencodings.h \
   utiltest.h \
@@ -322,6 +346,7 @@ libbitcoin_wallet_a_SOURCES = \
   wallet/asyncrpcoperation_shieldcoinbase.cpp \
   wallet/crypter.cpp \
   wallet/db.cpp \
+  wallet/orchard.cpp \
   wallet/paymentdisclosure.cpp \
   wallet/paymentdisclosuredb.cpp \
   wallet/rpcdisclosure.cpp \
@@ -392,6 +417,7 @@ libbitcoin_common_a_SOURCES = \
   netbase.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
+  primitives/tx_version_info.cpp \
   proof_verifier.cpp \
   protocol.cpp \
   pubkey.cpp \
@@ -501,6 +527,7 @@ zcash_cli_LDADD = \
   $(LIBZCASH) \
   $(LIBRUSTZCASH) \
   $(LIBBITCOIN_CRYPTO) \
+  $(LIBSECP256K1) \
   $(LIBZCASH_LIBS)
 #
 
@@ -533,8 +560,12 @@ libzcash_a_SOURCES = \
   zcash/IncrementalMerkleTree.cpp \
   zcash/NoteEncryption.cpp \
   zcash/Address.cpp \
+  zcash/address/transparent.cpp \
+  zcash/address/mnemonic.cpp \
+  zcash/address/orchard.cpp \
   zcash/address/sapling.cpp \
   zcash/address/sprout.cpp \
+  zcash/address/unified.cpp \
   zcash/address/zip32.cpp \
   zcash/History.cpp \
   zcash/JoinSplit.cpp \
@@ -557,6 +588,7 @@ libzcash_script_la_SOURCES = \
   crypto/sha512.cpp \
   hash.cpp \
   primitives/transaction.cpp \
+  primitives/tx_version_info.cpp \
   pubkey.cpp \
   script/zcash_script.cpp \
   script/interpreter.cpp \
@@ -582,7 +614,7 @@ CTAES_DIST += crypto/ctaes/ctaes.h
 CTAES_DIST += crypto/ctaes/README.md
 CTAES_DIST += crypto/ctaes/test.c
 
-CLEANFILES = *.gcda *.gcno */*.gcno wallet/*/*.gcno
+CLEANFILES = *.gcda *.gcno */*.gcno wallet/*/*.gcno $(bin_SCRIPTS)
 
 DISTCLEANFILES = obj/build.h
 
@@ -606,16 +638,17 @@ clean-local:
 	$(AM_V_CXX) $(OBJCXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	  $(CPPFLAGS) $(AM_CXXFLAGS) $(AM_CXXFLAGS) $(PIE_FLAGS) $(CXXFLAGS) -c -o $@ $<
 
-check-symbols: $(bin_PROGRAMS)
+check-symbols: $(bin_PROGRAMS) $(bin_SCRIPTS)
 if GLIBC_BACK_COMPAT
-	@echo "Checking glibc back compat of [$(bin_PROGRAMS)]..."
-	$(AM_V_at) READELF=$(READELF) CPPFILT=$(CPPFILT) $(top_srcdir)/contrib/devtools/symbol-check.py $(bin_PROGRAMS)
+	@echo "Checking glibc back compat of [$(bin_PROGRAMS) $(bin_SCRIPTS)]..."
+	$(AM_V_at) READELF=$(READELF) CPPFILT=$(CPPFILT) $(top_srcdir)/contrib/devtools/symbol-check.py $(bin_PROGRAMS) $(bin_SCRIPTS)
 endif
 
-check-security: $(bin_PROGRAMS)
+check-security: $(bin_PROGRAMS) $(bin_SCRIPTS)
 if HARDEN
-	@echo "Checking binary security of [$(bin_PROGRAMS)]..."
+	@echo "Checking binary security of [$(bin_PROGRAMS) $(bin_SCRIPTS)]..."
 	$(AM_V_at) READELF=$(READELF) OBJDUMP=$(OBJDUMP) $(top_srcdir)/contrib/devtools/security-check.py $(bin_PROGRAMS)
+	$(AM_V_at) READELF=$(READELF) OBJDUMP=$(OBJDUMP) $(top_srcdir)/contrib/devtools/security-check.py --allow-no-canary $(bin_SCRIPTS)
 endif
 
 %.pb.cc %.pb.h: %.proto

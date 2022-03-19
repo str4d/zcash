@@ -523,6 +523,16 @@ public:
     std::string ToString() const;
 };
 
+/** An outpoint - a combination of a txid and an index n into its orchard
+ * actions */
+class OrchardOutPoint : public BaseOutPoint
+{
+public:
+    OrchardOutPoint() : BaseOutPoint() {};
+    OrchardOutPoint(uint256 hashIn, uint32_t nIn) : BaseOutPoint(hashIn, nIn) {};
+    std::string ToString() const;
+};
+
 /** An input of a transaction.  It contains the location of the previous
  * transaction's output that it claims and a signature that matches the
  * output's public key.
@@ -719,6 +729,8 @@ public:
     static const int32_t OVERWINTER_MAX_CURRENT_VERSION = 3;
     static const int32_t SAPLING_MIN_CURRENT_VERSION = 4;
     static const int32_t SAPLING_MAX_CURRENT_VERSION = 4;
+    static const int32_t NU5_MIN_CURRENT_VERSION = 4;
+    static const int32_t NU5_MAX_CURRENT_VERSION = 5;
 
     static_assert(SPROUT_MIN_CURRENT_VERSION >= SPROUT_MIN_TX_VERSION,
                   "standard rule for tx version should be consistent with network rule");
@@ -735,6 +747,13 @@ public:
 
     static_assert( (SAPLING_MAX_CURRENT_VERSION <= SAPLING_MAX_TX_VERSION &&
                     SAPLING_MAX_CURRENT_VERSION >= SAPLING_MIN_CURRENT_VERSION),
+                  "standard rule for tx version should be consistent with network rule");
+
+    static_assert(NU5_MIN_CURRENT_VERSION >= SAPLING_MIN_TX_VERSION,
+                  "standard rule for tx version should be consistent with network rule");
+
+    static_assert( (NU5_MAX_CURRENT_VERSION <= ZIP225_MAX_TX_VERSION &&
+                    NU5_MAX_CURRENT_VERSION >= NU5_MIN_CURRENT_VERSION),
                   "standard rule for tx version should be consistent with network rule");
 
     // The local variables are made const to prevent unintended modification
@@ -960,16 +979,6 @@ public:
     bool IsCoinBase() const
     {
         return (vin.size() == 1 && vin[0].prevout.IsNull());
-    }
-
-    friend bool operator==(const CTransaction& a, const CTransaction& b)
-    {
-        return a.wtxid.hash == b.wtxid.hash;
-    }
-
-    friend bool operator!=(const CTransaction& a, const CTransaction& b)
-    {
-        return a.wtxid.hash != b.wtxid.hash;
     }
 
     std::string ToString() const;

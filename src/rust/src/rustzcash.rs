@@ -29,8 +29,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::slice;
+use std::sync::Once;
 use subtle::CtOption;
-use tracing::info;
+use tracing::{error, info};
 
 #[cfg(not(target_os = "windows"))]
 use std::ffi::OsStr;
@@ -46,14 +47,16 @@ use zcash_primitives::{
     block::equihash,
     constants::{CRH_IVK_PERSONALIZATION, PROOF_GENERATION_KEY_GENERATOR, SPENDING_KEY_GENERATOR},
     merkle_tree::MerklePath,
-    sapling::{merkle_hash, spend_sig},
     sapling::{
+        self,
+        keys::FullViewingKey,
         note_encryption::sapling_ka_agree,
         redjubjub::{self, Signature},
         Diversifier, Note, PaymentAddress, ProofGenerationKey, Rseed, ViewingKey,
     },
+    sapling::{merkle_hash, spend_sig},
     transaction::components::Amount,
-    zip32,
+    zip32::{self, sapling_address, sapling_derive_internal_fvk, sapling_find_address},
 };
 use zcash_proofs::{
     circuit::sapling::TREE_DEPTH as SAPLING_TREE_DEPTH,
@@ -67,11 +70,18 @@ mod ed25519;
 mod metrics_ffi;
 mod streams_ffi;
 mod tracing_ffi;
+mod zcashd_orchard;
 
 mod address_ffi;
+mod builder_ffi;
 mod history_ffi;
+mod incremental_merkle_tree;
+mod incremental_merkle_tree_ffi;
 mod orchard_ffi;
+mod orchard_keys_ffi;
 mod transaction_ffi;
+mod unified_keys_ffi;
+mod wallet;
 mod zip339_ffi;
 
 mod test_harness_ffi;
@@ -79,6 +89,7 @@ mod test_harness_ffi;
 #[cfg(test)]
 mod tests;
 
+static PROOF_PARAMETERS_LOADED: Once = Once::new();
 static mut SAPLING_SPEND_VK: Option<PreparedVerifyingKey<Bls12>> = None;
 static mut SAPLING_OUTPUT_VK: Option<PreparedVerifyingKey<Bls12>> = None;
 static mut SPROUT_GROTH16_VK: Option<PreparedVerifyingKey<Bls12>> = None;
@@ -122,64 +133,66 @@ pub extern "C" fn librustzcash_init_zksnark_params(
     #[cfg(target_os = "windows")] sprout_path: *const u16,
     sprout_path_len: usize,
 ) {
-    #[cfg(not(target_os = "windows"))]
-    let (spend_path, output_path, sprout_path) = {
-        (
-            OsStr::from_bytes(unsafe { slice::from_raw_parts(spend_path, spend_path_len) }),
-            OsStr::from_bytes(unsafe { slice::from_raw_parts(output_path, output_path_len) }),
-            if sprout_path.is_null() {
-                None
-            } else {
-                Some(OsStr::from_bytes(unsafe {
-                    slice::from_raw_parts(sprout_path, sprout_path_len)
-                }))
-            },
-        )
-    };
+    PROOF_PARAMETERS_LOADED.call_once(|| {
+        #[cfg(not(target_os = "windows"))]
+        let (spend_path, output_path, sprout_path) = {
+            (
+                OsStr::from_bytes(unsafe { slice::from_raw_parts(spend_path, spend_path_len) }),
+                OsStr::from_bytes(unsafe { slice::from_raw_parts(output_path, output_path_len) }),
+                if sprout_path.is_null() {
+                    None
+                } else {
+                    Some(OsStr::from_bytes(unsafe {
+                        slice::from_raw_parts(sprout_path, sprout_path_len)
+                    }))
+                },
+            )
+        };
 
-    #[cfg(target_os = "windows")]
-    let (spend_path, output_path, sprout_path) = {
-        (
-            OsString::from_wide(unsafe { slice::from_raw_parts(spend_path, spend_path_len) }),
-            OsString::from_wide(unsafe { slice::from_raw_parts(output_path, output_path_len) }),
-            if sprout_path.is_null() {
-                None
-            } else {
-                Some(OsString::from_wide(unsafe {
-                    slice::from_raw_parts(sprout_path, sprout_path_len)
-                }))
-            },
-        )
-    };
+        #[cfg(target_os = "windows")]
+        let (spend_path, output_path, sprout_path) = {
+            (
+                OsString::from_wide(unsafe { slice::from_raw_parts(spend_path, spend_path_len) }),
+                OsString::from_wide(unsafe { slice::from_raw_parts(output_path, output_path_len) }),
+                if sprout_path.is_null() {
+                    None
+                } else {
+                    Some(OsString::from_wide(unsafe {
+                        slice::from_raw_parts(sprout_path, sprout_path_len)
+                    }))
+                },
+            )
+        };
 
-    let (spend_path, output_path, sprout_path) = (
-        Path::new(&spend_path),
-        Path::new(&output_path),
-        sprout_path.as_ref().map(|p| Path::new(p)),
-    );
+        let (spend_path, output_path, sprout_path) = (
+            Path::new(&spend_path),
+            Path::new(&output_path),
+            sprout_path.as_ref().map(Path::new),
+        );
 
-    // Load params
-    let params = load_parameters(spend_path, output_path, sprout_path);
+        // Load params
+        let params = load_parameters(spend_path, output_path, sprout_path);
 
-    // Generate Orchard parameters.
-    info!(target: "main", "Loading Orchard parameters");
-    let orchard_pk = orchard::circuit::ProvingKey::build();
-    let orchard_vk = orchard::circuit::VerifyingKey::build();
+        // Generate Orchard parameters.
+        info!(target: "main", "Loading Orchard parameters");
+        let orchard_pk = orchard::circuit::ProvingKey::build();
+        let orchard_vk = orchard::circuit::VerifyingKey::build();
 
-    // Caller is responsible for calling this function once, so
-    // these global mutations are safe.
-    unsafe {
-        SAPLING_SPEND_PARAMS = Some(params.spend_params);
-        SAPLING_OUTPUT_PARAMS = Some(params.output_params);
-        SPROUT_GROTH16_PARAMS_PATH = sprout_path.map(|p| p.to_owned());
+        // Caller is responsible for calling this function once, so
+        // these global mutations are safe.
+        unsafe {
+            SAPLING_SPEND_PARAMS = Some(params.spend_params);
+            SAPLING_OUTPUT_PARAMS = Some(params.output_params);
+            SPROUT_GROTH16_PARAMS_PATH = sprout_path.map(|p| p.to_owned());
 
-        SAPLING_SPEND_VK = Some(params.spend_vk);
-        SAPLING_OUTPUT_VK = Some(params.output_vk);
-        SPROUT_GROTH16_VK = params.sprout_vk;
+            SAPLING_SPEND_VK = Some(params.spend_vk);
+            SAPLING_OUTPUT_VK = Some(params.output_vk);
+            SPROUT_GROTH16_VK = params.sprout_vk;
 
-        ORCHARD_PK = Some(orchard_pk);
-        ORCHARD_VK = Some(orchard_vk);
-    }
+            ORCHARD_PK = Some(orchard_pk);
+            ORCHARD_VK = Some(orchard_vk);
+        }
+    });
 }
 
 /// Writes the "uncommitted" note value for empty leaves of the Merkle tree.
@@ -527,13 +540,23 @@ pub extern "C" fn librustzcash_eh_isvalid(
     soln: *const c_uchar,
     soln_len: size_t,
 ) -> bool {
-    if (k >= n) || (n % 8 != 0) || (soln_len != (1 << k) * ((n / (k + 1)) as usize + 1) / 8) {
+    let expected_soln_len = (1 << k) * ((n / (k + 1)) as usize + 1) / 8;
+    if (k >= n) || (n % 8 != 0) || (soln_len != expected_soln_len) {
+        error!(
+            "eh_isvalid: params wrong, n={}, k={}, soln_len={} expected={}",
+            n, k, soln_len, expected_soln_len,
+        );
         return false;
     }
     let rs_input = unsafe { slice::from_raw_parts(input, input_len) };
     let rs_nonce = unsafe { slice::from_raw_parts(nonce, nonce_len) };
     let rs_soln = unsafe { slice::from_raw_parts(soln, soln_len) };
-    equihash::is_valid_solution(n, k, rs_input, rs_nonce, rs_soln).is_ok()
+    if let Err(e) = equihash::is_valid_solution(n, k, rs_input, rs_nonce, rs_soln) {
+        error!("eh_isvalid: is_valid_solution: {}", e);
+        false
+    } else {
+        true
+    }
 }
 
 /// Creates a Sapling verification context. Please free this when you're done.
@@ -1024,7 +1047,7 @@ pub extern "C" fn librustzcash_sapling_proving_ctx_free(ctx: *mut SaplingProving
 
 /// Derive the master ExtendedSpendingKey from a seed.
 #[no_mangle]
-pub extern "C" fn librustzcash_zip32_xsk_master(
+pub extern "C" fn librustzcash_zip32_sapling_xsk_master(
     seed: *const c_uchar,
     seedlen: size_t,
     xsk_master: *mut [c_uchar; 169],
@@ -1039,7 +1062,7 @@ pub extern "C" fn librustzcash_zip32_xsk_master(
 
 /// Derive a child ExtendedSpendingKey from a parent.
 #[no_mangle]
-pub extern "C" fn librustzcash_zip32_xsk_derive(
+pub extern "C" fn librustzcash_zip32_sapling_xsk_derive(
     xsk_parent: *const [c_uchar; 169],
     i: u32,
     xsk_i: *mut [c_uchar; 169],
@@ -1054,9 +1077,26 @@ pub extern "C" fn librustzcash_zip32_xsk_derive(
         .expect("should be able to serialize an ExtendedSpendingKey");
 }
 
+/// Derive the Sapling internal spending key from the external extended
+/// spending key
+#[no_mangle]
+pub extern "C" fn librustzcash_zip32_sapling_xsk_derive_internal(
+    xsk_external: *const [c_uchar; 169],
+    xsk_internal_ret: *mut [c_uchar; 169],
+) {
+    let xsk_external = zip32::ExtendedSpendingKey::read(&unsafe { *xsk_external }[..])
+        .expect("valid ExtendedSpendingKey");
+
+    let xsk_internal = xsk_external.derive_internal();
+
+    xsk_internal
+        .write(&mut (unsafe { &mut *xsk_internal_ret })[..])
+        .expect("should be able to serialize an ExtendedSpendingKey");
+}
+
 /// Derive a child ExtendedFullViewingKey from a parent.
 #[no_mangle]
-pub extern "C" fn librustzcash_zip32_xfvk_derive(
+pub extern "C" fn librustzcash_zip32_sapling_xfvk_derive(
     xfvk_parent: *const [c_uchar; 169],
     i: u32,
     xfvk_i: *mut [c_uchar; 169],
@@ -1076,30 +1116,87 @@ pub extern "C" fn librustzcash_zip32_xfvk_derive(
     true
 }
 
+/// Derive the Sapling internal full viewing key from the corresponding external full viewing key
+#[no_mangle]
+pub extern "C" fn librustzcash_zip32_sapling_derive_internal_fvk(
+    fvk: *const [c_uchar; 96],
+    dk: *const [c_uchar; 32],
+    fvk_ret: *mut [c_uchar; 96],
+    dk_ret: *mut [c_uchar; 32],
+) {
+    let fvk = FullViewingKey::read(&unsafe { *fvk }[..]).expect("valid Sapling FullViewingKey");
+    let dk = zip32::DiversifierKey(unsafe { *dk });
+
+    let (fvk_internal, dk_internal) = sapling_derive_internal_fvk(&fvk, &dk);
+    let fvk_ret = unsafe { &mut *fvk_ret };
+    let dk_ret = unsafe { &mut *dk_ret };
+
+    fvk_ret.copy_from_slice(&fvk_internal.to_bytes());
+    dk_ret.copy_from_slice(&dk_internal.0);
+}
+
 /// Derive a PaymentAddress from an ExtendedFullViewingKey.
 #[no_mangle]
-pub extern "C" fn librustzcash_zip32_xfvk_address(
-    xfvk: *const [c_uchar; 169],
+pub extern "C" fn librustzcash_zip32_sapling_address(
+    fvk: *const [c_uchar; 96],
+    dk: *const [c_uchar; 32],
+    j: *const [c_uchar; 11],
+    addr_ret: *mut [c_uchar; 43],
+) -> bool {
+    let fvk = FullViewingKey::read(&unsafe { *fvk }[..]).expect("valid Sapling FullViewingKey");
+    let dk = zip32::DiversifierKey(unsafe { *dk });
+    let j = zip32::DiversifierIndex(unsafe { *j });
+
+    match sapling_address(&fvk, &dk, j) {
+        Some(addr) => {
+            let addr_ret = unsafe { &mut *addr_ret };
+            addr_ret.copy_from_slice(&addr.to_bytes());
+
+            true
+        }
+        None => false,
+    }
+}
+
+/// Derive a PaymentAddress from an ExtendedFullViewingKey.
+#[no_mangle]
+pub extern "C" fn librustzcash_zip32_find_sapling_address(
+    fvk: *const [c_uchar; 96],
+    dk: *const [c_uchar; 32],
     j: *const [c_uchar; 11],
     j_ret: *mut [c_uchar; 11],
     addr_ret: *mut [c_uchar; 43],
 ) -> bool {
-    let xfvk = zip32::ExtendedFullViewingKey::read(&unsafe { *xfvk }[..])
-        .expect("valid ExtendedFullViewingKey");
+    let fvk = FullViewingKey::read(&unsafe { *fvk }[..]).expect("valid Sapling FullViewingKey");
+    let dk = zip32::DiversifierKey(unsafe { *dk });
     let j = zip32::DiversifierIndex(unsafe { *j });
 
-    let addr = match xfvk.address(j) {
-        Ok(addr) => addr,
-        Err(_) => return false,
-    };
+    match sapling_find_address(&fvk, &dk, j) {
+        Some((j, addr)) => {
+            let j_ret = unsafe { &mut *j_ret };
+            let addr_ret = unsafe { &mut *addr_ret };
 
+            j_ret.copy_from_slice(&j.0);
+            addr_ret.copy_from_slice(&addr.to_bytes());
+
+            true
+        }
+        None => false,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn librustzcash_sapling_diversifier_index(
+    dk: *const [c_uchar; 32],
+    d: *const [c_uchar; 11],
+    j_ret: *mut [c_uchar; 11],
+) {
+    let dk = zip32::DiversifierKey(unsafe { *dk });
+    let diversifier = sapling::Diversifier(unsafe { *d });
     let j_ret = unsafe { &mut *j_ret };
-    let addr_ret = unsafe { &mut *addr_ret };
 
-    j_ret.copy_from_slice(&(addr.0).0);
-    addr_ret.copy_from_slice(&addr.1.to_bytes());
-
-    true
+    let j = dk.diversifier_index(&diversifier);
+    j_ret.copy_from_slice(&j.0);
 }
 
 #[no_mangle]

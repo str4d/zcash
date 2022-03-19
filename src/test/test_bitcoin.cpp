@@ -78,6 +78,7 @@ BasicTestingSetup::BasicTestingSetup(const std::string& chainName)
     fCheckBlockIndex = true;
     SelectParams(chainName);
     noui_connect();
+    TestSetIBD(false);
 }
 
 BasicTestingSetup::~BasicTestingSetup()
@@ -129,7 +130,7 @@ TestingSetup::~TestingSetup()
 TestChain100Setup::TestChain100Setup() : TestingSetup(CBaseChainParams::REGTEST)
 {
     // Generate a 100-block chain:
-    coinbaseKey.MakeNewKey(true);
+    coinbaseKey = CKey::TestOnlyRandomKey(true);
     CScript scriptPubKey = CScript() <<  ToByteVector(coinbaseKey.GetPubKey()) << OP_CHECKSIG;
     for (int i = 0; i < COINBASE_MATURITY; i++)
     {

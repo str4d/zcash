@@ -66,8 +66,10 @@ BlockMap mapBlockIndex;
 CChain chainActive;
 CBlockIndex *pindexBestHeader = NULL;
 static std::atomic<int64_t> nTimeBestReceived(0); // Used only to inform the wallet of when we last received a block
-CWaitableCriticalSection csBestBlock;
-CConditionVariable cvBlockChange;
+CWaitableCriticalSection g_best_block_mutex;
+CConditionVariable g_best_block_cv;
+uint256 g_best_block;
+int g_best_block_height;
 int nScriptCheckThreads = 0;
 std::atomic_bool fImporting(false);
 std::atomic_bool fReindex(false);
@@ -1787,7 +1789,7 @@ bool AcceptToMemoryPool(
     if (tx.IsCoinBase())
         return state.DoS(100, false, REJECT_INVALID, "coinbase");
 
-    // Rather not work on nonstandard transactions (unless -testnet/-regtest)
+    // Rather not work on nonstandard transactions (unless -regtest)
     string reason;
     if (chainparams.RequireStandard() && !IsStandardTx(tx, reason, chainparams, nextBlockHeight))
         return state.DoS(0, false, REJECT_NONSTANDARD, reason);
@@ -2019,27 +2021,31 @@ bool AcceptToMemoryPool(
 bool GetTimestampIndex(unsigned int high, unsigned int low, bool fActiveOnly,
     std::vector<std::pair<uint256, unsigned int> > &hashes)
 {
-    if (!fTimestampIndex)
-        return error("Timestamp index not enabled");
-
-    if (!pblocktree->ReadTimestampIndex(high, low, fActiveOnly, hashes))
-        return error("Unable to get hashes for timestamps");
-
+    if (!fTimestampIndex) {
+        LogPrint("rpc", "Timestamp index not enabled");
+        return false;
+    }
+    if (!pblocktree->ReadTimestampIndex(high, low, fActiveOnly, hashes)) {
+        LogPrint("rpc", "Unable to get hashes for timestamps");
+        return false;
+    }
     return true;
 }
 
 bool GetSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value)
 {
     AssertLockHeld(cs_main);
-    if (!fSpentIndex)
-        return error("Spent index not enabled");
-
+    if (!fSpentIndex) {
+        LogPrint("rpc", "Spent index not enabled");
+        return false;
+    }
     if (mempool.getSpentIndex(key, value))
         return true;
 
-    if (!pblocktree->ReadSpentIndex(key, value))
-        return error("Unable to get spent index information");
-
+    if (!pblocktree->ReadSpentIndex(key, value)) {
+        LogPrint("rpc", "Unable to get spent index information");
+        return false;
+    }
     return true;
 }
 
@@ -2047,24 +2053,28 @@ bool GetAddressIndex(const uint160& addressHash, int type,
                      std::vector<CAddressIndexDbEntry>& addressIndex,
                      int start, int end)
 {
-    if (!fAddressIndex)
-        return error("address index not enabled");
-
-    if (!pblocktree->ReadAddressIndex(addressHash, type, addressIndex, start, end))
-        return error("unable to get txids for address");
-
+    if (!fAddressIndex) {
+        LogPrint("rpc", "address index not enabled");
+        return false;
+    }
+    if (!pblocktree->ReadAddressIndex(addressHash, type, addressIndex, start, end)) {
+        LogPrint("rpc", "unable to get txids for address");
+        return false;
+    }
     return true;
 }
 
 bool GetAddressUnspent(const uint160& addressHash, int type,
                        std::vector<CAddressUnspentDbEntry>& unspentOutputs)
 {
-    if (!fAddressIndex)
-        return error("address index not enabled");
-
-    if (!pblocktree->ReadAddressUnspentIndex(addressHash, type, unspentOutputs))
-        return error("unable to get txids for address");
-
+    if (!fAddressIndex) {
+        LogPrint("rpc", "address index not enabled");
+        return false;
+    }
+    if (!pblocktree->ReadAddressUnspentIndex(addressHash, type, unspentOutputs)) {
+        LogPrint("rpc", "unable to get txids for address");
+        return false;
+    }
     return true;
 }
 
@@ -2239,16 +2249,23 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
     }
 }
 
+static std::atomic<bool> IBDLatchToFalse{false};
+// testing-only, allow initial block down state to be set or reset
+bool TestSetIBD(bool ibd) {
+    bool ret = !IBDLatchToFalse;
+    IBDLatchToFalse.store(!ibd, std::memory_order_relaxed);
+    return ret;
+}
+
 bool IsInitialBlockDownload(const Consensus::Params& params)
 {
     // Once this function has returned false, it must remain false.
-    static std::atomic<bool> latchToFalse{false};
     // Optimization: pre-test latch before taking the lock.
-    if (latchToFalse.load(std::memory_order_relaxed))
+    if (IBDLatchToFalse.load(std::memory_order_relaxed))
         return false;
 
     LOCK(cs_main);
-    if (latchToFalse.load(std::memory_order_relaxed))
+    if (IBDLatchToFalse.load(std::memory_order_relaxed))
         return false;
     if (fImporting || fReindex)
         return true;
@@ -2310,7 +2327,7 @@ bool IsInitialBlockDownload(const Consensus::Params& params)
     if (chainActive.Tip()->GetBlockTime() < (GetTime() - nMaxTipAge))
         return true;
     LogPrintf("Leaving InitialBlockDownload (latching to false)\n");
-    latchToFalse.store(true, std::memory_order_relaxed);
+    IBDLatchToFalse.store(true, std::memory_order_relaxed);
     return false;
 }
 
@@ -2892,6 +2909,17 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
         view.PopAnchor(SaplingMerkleTree::empty_root(), SAPLING);
     }
 
+    // Set the old best Orchard anchor back. We can get this from the
+    // `hashFinalOrchardRoot` of the last block. However, if the last
+    // block was not on or after the Orchard activation height, this
+    // will be set to `null`. For logical consistency, in this case we
+    // set the last anchor to the empty root.
+    if (chainparams.GetConsensus().NetworkUpgradeActive(pindex->pprev->nHeight, Consensus::UPGRADE_NU5)) {
+        view.PopAnchor(pindex->pprev->hashFinalOrchardRoot, ORCHARD);
+    } else {
+        view.PopAnchor(OrchardMerkleFrontier::empty_root(), ORCHARD);
+    }
+
     // This is guaranteed to be filled by LoadBlockIndex.
     assert(pindex->nCachedBranchId);
     auto consensusBranchId = pindex->nCachedBranchId.value();
@@ -3118,8 +3146,20 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     SaplingMerkleTree sapling_tree;
     assert(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree));
 
-    OrchardMerkleTree orchard_tree;
-    assert(view.GetOrchardAnchorAt(view.GetBestAnchor(ORCHARD), orchard_tree));
+    OrchardMerkleFrontier orchard_tree;
+    if (pindex->pprev && chainparams.GetConsensus().NetworkUpgradeActive(pindex->pprev->nHeight, Consensus::UPGRADE_NU5)) {
+        // Verify that the view's current state corresponds to the previous block.
+        assert(pindex->pprev->hashFinalOrchardRoot == view.GetBestAnchor(ORCHARD));
+        // We only call ConnectBlock() on top of the active chain's tip.
+        assert(!pindex->pprev->hashFinalOrchardRoot.IsNull());
+
+        assert(view.GetOrchardAnchorAt(pindex->pprev->hashFinalOrchardRoot, orchard_tree));
+    } else {
+        if (pindex->pprev) {
+            assert(pindex->pprev->hashFinalOrchardRoot.IsNull());
+        }
+        assert(view.GetOrchardAnchorAt(OrchardMerkleFrontier::empty_root(), orchard_tree));
+    }
 
     // Grab the consensus branch ID for this block and its parent
     auto consensusBranchId = CurrentEpochBranchId(pindex->nHeight, chainparams.GetConsensus());
@@ -3742,7 +3782,12 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
     RenderPoolMetrics("sapling", saplingPool);
     RenderPoolMetrics("transparent", transparentPool);
 
-    cvBlockChange.notify_all();
+    {
+        boost::unique_lock<boost::mutex> lock(g_best_block_mutex);
+        g_best_block = pindexNew->GetBlockHash();
+        g_best_block_height = pindexNew->nHeight;
+        g_best_block_cv.notify_all();
+    }
 }
 
 /**
@@ -3760,6 +3805,7 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
     // Apply the block atomically to the chain state.
     uint256 sproutAnchorBeforeDisconnect = pcoinsTip->GetBestAnchor(SPROUT);
     uint256 saplingAnchorBeforeDisconnect = pcoinsTip->GetBestAnchor(SAPLING);
+    uint256 orchardAnchorBeforeDisconnect = pcoinsTip->GetBestAnchor(ORCHARD);
     int64_t nStart = GetTimeMicros();
     {
         CCoinsViewCache view(pcoinsTip);
@@ -3771,6 +3817,7 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
     LogPrint("bench", "- Disconnect block: %.2fms\n", (GetTimeMicros() - nStart) * 0.001);
     uint256 sproutAnchorAfterDisconnect = pcoinsTip->GetBestAnchor(SPROUT);
     uint256 saplingAnchorAfterDisconnect = pcoinsTip->GetBestAnchor(SAPLING);
+    uint256 orchardAnchorAfterDisconnect = pcoinsTip->GetBestAnchor(ORCHARD);
     // Write the chain state to disk, if necessary.
     if (!FlushStateToDisk(chainparams, state, FLUSH_STATE_IF_NEEDED))
         return false;
@@ -3793,6 +3840,11 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
             // The anchor may not change between block disconnects,
             // in which case we don't want to evict from the mempool yet!
             mempool.removeWithAnchor(saplingAnchorBeforeDisconnect, SAPLING);
+        }
+        if (orchardAnchorBeforeDisconnect != orchardAnchorAfterDisconnect) {
+            // The anchor may not change between block disconnects,
+            // in which case we don't want to evict from the mempool yet!
+            mempool.removeWithAnchor(orchardAnchorBeforeDisconnect, ORCHARD);
         }
     }
 
@@ -5367,12 +5419,13 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     // Flags used to permit skipping checks for efficiency
     auto verifier = ProofVerifier::Disabled(); // No need to verify JoinSplits twice
     bool fCheckTransactions = true;
-    // We may as well check Orchard authorizations if we are checking
-    // transactions, since we can batch-validate them.
-    auto orchardAuth = orchard::AuthValidator::Batch();
 
     for (CBlockIndex* pindex = chainActive.Tip(); pindex && pindex->pprev; pindex = pindex->pprev)
     {
+        // We may as well check Orchard authorizations if we are checking
+        // transactions, since we can batch-validate them.
+        auto orchardAuth = orchard::AuthValidator::Batch();
+
         boost::this_thread::interruption_point();
         uiInterface.ShowProgress(_("Verifying blocks..."), std::max(1, std::min(99, (int)(((double)(chainActive.Height() - pindex->nHeight)) / (double)nCheckDepth * (nCheckLevel >= 4 ? 50 : 100)))));
         if (pindex->nHeight < chainActive.Height()-nCheckDepth)
@@ -5412,6 +5465,10 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             } else {
                 nGoodTransactions += block.vtx.size();
             }
+        }
+
+        if (!orchardAuth.Validate()) {
+            return error("VerifyDB(): Orchard batch validation failed for block at height %d", pindex->nHeight);
         }
 
         if (ShutdownRequested())
@@ -6174,7 +6231,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                     if ((mi->second->nVersion <= 4) != (inv.type == MSG_TX)) {
                         Misbehaving(pfrom->GetId(), 100);
                         LogPrint("net", "Wrong INV message type used for v%d tx", mi->second->nVersion);
-                        // Break so that this inv mesage will be erased from the queue
+                        // Break so that this inv message will be erased from the queue
                         // (otherwise the peer would repeatedly hit this case until its
                         // Misbehaving level rises above -banscore, no matter what the
                         // user set it to).
@@ -6195,7 +6252,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                         if ((txinfo.tx->nVersion <= 4) != (inv.type == MSG_TX)) {
                             Misbehaving(pfrom->GetId(), 100);
                             LogPrint("net", "Wrong INV message type used for v%d tx", txinfo.tx->nVersion);
-                            // Break so that this inv mesage will be erased from the queue.
+                            // Break so that this inv message will be erased from the queue.
                             break;
                         }
                         // Ensure we only reply with a transaction if it is exactly what
@@ -7194,7 +7251,7 @@ bool static ProcessMessage(const CChainParams& chainparams, CNode* pfrom, string
                 LogPrint("net", "Reject %s\n", SanitizeString(ss.str()));
             } catch (const std::ios_base::failure&) {
                 // Avoid feedback loops by preventing reject messages from triggering a new reject message.
-                LogPrint("net", "Unparseable reject message received\n");
+                LogPrint("net", "Unparsable reject message received\n");
             }
         }
     }
@@ -7522,6 +7579,10 @@ bool SendMessages(const Consensus::Params& params, CNode* pto)
                     const uint256& hash = txinfo.tx->GetHash();
                     CInv inv = InvForTransaction(txinfo.tx);
                     pto->setInventoryTxToSend.erase(hash);
+                    // ZIP 239: We won't have v5 transactions in our mempool until after
+                    // NU5 activates, at which point we will only be connected to peers
+                    // that understand MSG_WTX.
+                    if (inv.type == MSG_WTX) assert(pto->nVersion >= CINV_WTX_VERSION);
                     if (IsExpiringSoonTx(*txinfo.tx, currentHeight + 1)) continue;
                     if (pto->pfilter) {
                         if (!pto->pfilter->IsRelevantAndUpdate(*txinfo.tx)) continue;
@@ -7570,6 +7631,10 @@ bool SendMessages(const Consensus::Params& params, CNode* pto)
                         continue;
                     }
                     CInv inv = InvForTransaction(txinfo.tx);
+                    // ZIP 239: We won't have v5 transactions in our mempool until after
+                    // NU5 activates, at which point we will only be connected to peers
+                    // that understand MSG_WTX.
+                    if (inv.type == MSG_WTX) assert(pto->nVersion >= CINV_WTX_VERSION);
                     if (IsExpiringSoonTx(*txinfo.tx, currentHeight + 1)) continue;
                     if (pto->pfilter && !pto->pfilter->IsRelevantAndUpdate(*txinfo.tx)) continue;
                     // Send

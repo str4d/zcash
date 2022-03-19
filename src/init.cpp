@@ -305,7 +305,7 @@ bool static Bind(const CService &addr, unsigned int flags) {
 
 void OnRPCStopped()
 {
-    cvBlockChange.notify_all();
+    g_best_block_cv.notify_all();
     LogPrint("rpc", "RPC stopped.\n");
 }
 
@@ -341,7 +341,7 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-daemon", _("Run in the background as a daemon and accept commands"));
 #endif
     }
-    strUsage += HelpMessageOpt("-datadir=<dir>", _("Specify data directory"));
+    strUsage += HelpMessageOpt("-datadir=<dir>", _("Specify data directory (this path cannot use '~')"));
     strUsage += HelpMessageOpt("-paramsdir=<dir>", _("Specify Zcash network parameters directory"));
     strUsage += HelpMessageOpt("-dbcache=<n>", strprintf(_("Set database cache size in megabytes (%d to %d, default: %d)"), nMinDbCache, nMaxDbCache, nDefaultDbCache));
     strUsage += HelpMessageOpt("-debuglogfile=<file>", strprintf(_("Specify location of debug log file: this can be an absolute path or a path relative to the data directory (default: %s)"), DEFAULT_DEBUGLOGFILE));
@@ -684,7 +684,7 @@ void ThreadImport(std::vector<fs::path> vImportFiles, const CChainParams& chainp
  */
 bool InitSanityCheck(void)
 {
-    if(!ECC_InitSanityCheck()) {
+    if(!CKey::ECC_InitSanityCheck()) {
         InitError("Elliptic curve cryptography sanity check failure. Aborting.");
         return false;
     }
@@ -947,6 +947,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         return InitError(err.value());
     }
 
+    // Just temporarily (until fully functional), don't allow the Orchard wallet
+    // extensions if we're on mainnet
+    if (fExperimentalOrchardWallet && chainparams.NetworkIDString() == "main") {
+        return InitError(_("The -orchardwallet setting is not yet available on mainnet."));
+    }
+
     // if using block pruning, then disable txindex
     if (GetArg("-prune", 0)) {
         if (GetBoolArg("-txindex", DEFAULT_TXINDEX))
@@ -1077,7 +1083,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     }
 
 #ifdef ENABLE_WALLET
-    if (!CWallet::ParameterInteraction())
+    if (!CWallet::ParameterInteraction(chainparams))
         return false;
 #endif // ENABLE_WALLET
 
@@ -1098,16 +1104,11 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     KeyIO keyIO(chainparams);
 #ifdef ENABLE_MINING
     if (mapArgs.count("-mineraddress")) {
-        CTxDestination addr = keyIO.DecodeDestination(mapArgs["-mineraddress"]);
-        if (!IsValidDestination(addr)) {
-            // Try a payment address
-            auto zaddr = keyIO.DecodePaymentAddress(mapArgs["-mineraddress"]);
-            if (!std::visit(IsValidMinerAddress(), std::visit(ExtractMinerAddress(), zaddr)))
-            {
-                return InitError(strprintf(
-                    _("Invalid address for -mineraddress=<addr>: '%s' (must be a Sapling or transparent address)"),
-                    mapArgs["-mineraddress"]));
-            }
+        auto addr = keyIO.DecodePaymentAddress(mapArgs["-mineraddress"]);
+        if (!(addr.has_value() && std::visit(ExtractMinerAddress(chainparams.GetConsensus(), 0), addr.value()).has_value())) {
+            return InitError(strprintf(
+                _("Invalid address for -mineraddress=<addr>: '%s' (must be a Sapling or transparent P2PKH address)"),
+                mapArgs["-mineraddress"]));
         }
     }
 #endif
@@ -1142,6 +1143,29 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             if (!found) {
                 return InitError(strprintf("Invalid network upgrade (%s)", vDeploymentParams[0]));
             }
+        }
+
+        // To make testing easier (this code path is active only for regtest), activate missing network versions,
+        // so for example, if a Python (RPC) test does:
+        // extra_args = [
+        //    nuparams(BLOSSOM_BRANCH_ID, 205),
+        //    nuparams(HEARTWOOD_BRANCH_ID, 205),
+        //    nuparams(CANOPY_BRANCH_ID, 205),
+        //    nuparams(NU5_BRANCH_ID, 210),
+        // ]
+        //
+        // This can be simplified to:
+        // extra_args = [
+        //    nuparams(CANOPY_BRANCH_ID, 205),
+        //    nuparams(NU5_BRANCH_ID, 210),
+        // ]
+        const auto& consensus = chainparams.GetConsensus();
+        int nActivationHeight = Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT;
+        for (auto i = Consensus::MAX_NETWORK_UPGRADES-1; i >= Consensus::BASE_SPROUT + 1; --i) {
+            if (consensus.vUpgrades[i].nActivationHeight == Consensus::NetworkUpgrade::NO_ACTIVATION_HEIGHT) {
+                UpdateNetworkUpgradeParameters(Consensus::UpgradeIndex(i), nActivationHeight);
+            }
+            nActivationHeight = consensus.vUpgrades[i].nActivationHeight;
         }
     }
 
@@ -1453,7 +1477,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // cache size calculations
     int64_t nTotalCache = (GetArg("-dbcache", nDefaultDbCache) << 20);
     nTotalCache = std::max(nTotalCache, nMinDbCache << 20); // total cache cannot be less than nMinDbCache
-    nTotalCache = std::min(nTotalCache, nMaxDbCache << 20); // total cache cannot be greated than nMaxDbcache
+    nTotalCache = std::min(nTotalCache, nMaxDbCache << 20); // total cache cannot be greater than nMaxDbcache
     int64_t nBlockTreeDBCache = nTotalCache / 8;
     if (nBlockTreeDBCache > (1 << 21) && !GetBoolArg("-txindex", DEFAULT_TXINDEX))
         nBlockTreeDBCache = (1 << 21); // block tree db cache shouldn't be larger than 2 MiB
@@ -1633,7 +1657,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         pwalletMain = NULL;
         LogPrintf("Wallet disabled!\n");
     } else {
-        CWallet::InitLoadWallet(clearWitnessCaches);
+        CWallet::InitLoadWallet(chainparams, clearWitnessCaches);
         if (!pwalletMain)
             return false;
     }
@@ -1655,15 +1679,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
  #ifdef ENABLE_WALLET
         bool minerAddressInLocalWallet = false;
         if (pwalletMain) {
-            CTxDestination addr = keyIO.DecodeDestination(mapArgs["-mineraddress"]);
-            if (IsValidDestination(addr)) {
-                CKeyID keyID = std::get<CKeyID>(addr);
-                minerAddressInLocalWallet = pwalletMain->HaveKey(keyID);
-            } else {
-                auto zaddr = keyIO.DecodePaymentAddress(mapArgs["-mineraddress"]);
-                minerAddressInLocalWallet = std::visit(
-                    HaveSpendingKeyForPaymentAddress(pwalletMain), zaddr);
+            auto zaddr = keyIO.DecodePaymentAddress(mapArgs["-mineraddress"]);
+            if (!zaddr.has_value()) {
+                return InitError(_("-mineraddress is not a valid " PACKAGE_NAME " address."));
             }
+            auto ztxoSelector = pwalletMain->ZTXOSelectorForAddress(zaddr.value(), true, false);
+            minerAddressInLocalWallet = ztxoSelector.has_value();
         }
         if (GetBoolArg("-minetolocalwallet", true) && !minerAddressInLocalWallet) {
             return InitError(_("-mineraddress is not in the local wallet. Either use a local address, or set -minetolocalwallet=0"));
