@@ -7,7 +7,7 @@ use std::{
 use libc::{c_char, c_void};
 use zcash_address::{
     unified::{self, Container, Encoding},
-    FromAddress, Network, ToAddress, ZcashAddress,
+    Network, ToAddress, TryFromAddress, ZcashAddress,
 };
 use zcash_primitives::sapling;
 
@@ -45,11 +45,15 @@ struct UnifiedAddressHelper {
     ua: unified::Address,
 }
 
-impl FromAddress for UnifiedAddressHelper {
-    fn from_unified(
+// This change is only because of the [patch.crates-io] directive;
+// it won't be in the final commit.
+impl TryFromAddress for UnifiedAddressHelper {
+    type Error = ();
+
+    fn try_from_unified(
         net: Network,
         ua: unified::Address,
-    ) -> Result<Self, zcash_address::UnsupportedAddress> {
+    ) -> Result<Self, zcash_address::ConversionError<Self::Error>> {
         Ok(Self { net, ua })
     }
 }
