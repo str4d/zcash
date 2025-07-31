@@ -4,9 +4,9 @@ linker = "aarch64-linux-gnu-gcc"
 [source.crates-io]
 replace-with = "vendored-sources"
 
-[source."https://github.com/zcash/librustzcash.git"]
-git = "https://github.com/zcash/librustzcash.git"
-rev = "56ddab94b66f701bfd0a80a35841613c87b94f61"
+[source."https://github.com/str4d/librustzcash.git"]
+git = "https://github.com/str4d/librustzcash.git"
+rev = "92b4488fff78a170cf36fd454cce6c069d790721"
 replace-with = "vendored-sources"
 
 [source.vendored-sources]
